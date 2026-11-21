@@ -33,7 +33,7 @@ export function YahooPrices({ ticker, series, onDone }: { ticker: string; series
           {r.discrepancies?.length ? ` · ${r.discrepancies.length} discrepancias` : ""}
         </p>
       ) : <Notice tone="warn">No disponible ({r.symbol}): {r.reason}</Notice>)}
-      {all.data && <p className="text-xs">{all.data.map((x: any) => `${x.ticker} ${x.series}: ${x.status === "no_disponible" ? "no disponible" : `+${x.accepted_rows}`}`).join(" · ")}</p>}
+      {all.data && <p className="text-xs">{all.data.map((x: any) => `${x.ticker} ${x.series}: ${x.status === "no_disponible" ? "no disponible" : x.status === "al_dia" ? "al día" : `+${x.accepted_rows}`}`).join(" · ")}</p>}
     </div>
   );
 }

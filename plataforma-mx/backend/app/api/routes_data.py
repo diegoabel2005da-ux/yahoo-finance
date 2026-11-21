@@ -395,7 +395,11 @@ def yahoo_refresh(db: Session = Depends(get_session)):
         start = (last + timedelta(days=1)) if last else None
         res = yahoo.fetch_prices(inst.ticker, inst.series, start, None, inst.yahoo_symbol, None if start else "5y")
         if res["status"] != "ok":
-            out.append({"ticker": inst.ticker, "series": inst.series, **res})
+            if last is not None and "no devolvió observaciones" in res.get("reason", ""):
+                out.append({"ticker": inst.ticker, "series": inst.series, "symbol": res["symbol"], "status": "al_dia",
+                            "accepted_rows": 0, "last_date": last.isoformat()})
+            else:
+                out.append({"ticker": inst.ticker, "series": inst.series, **res})
             continue
         imp = importers.import_prices(db, yahoo.rows_to_csv(res["rows"]), f"yahoo_{res['symbol']}.csv") if res["rows"] \
             else {"accepted_rows": 0, "rejected": []}
