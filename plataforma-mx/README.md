@@ -77,7 +77,7 @@ cd backend && python -m pytest -q
 
 ### Catálogo cargado
 
-`backend/data/catalogs/mexder_catalogo_2026-11-21.csv` es la revisión del catálogo tomada de las páginas «Contratos de futuro listados» y «Contratos de opción listados» de MexDer (texto copiado por el usuario el 21-nov-2026): 39 instrumentos, de los cuales 29 tienen futuro y opción, 8 solo futuro y 2 solo opción. Incluye 31 acciones con futuro, ALFA A y NAFTRAC ISHRS (solo opciones), 5 valores globales del SIC y el S&P/BMV IPC, con sus claves de pizarra de futuros y opciones y su símbolo de Yahoo (verificado con cotización). ALFA A no tiene cotización en Yahoo (en la página de futuros la clave ALF aparece como SIGMAF A); queda sin símbolo hasta confirmarlo. Pendiente: las series vigentes de futuros y opciones (vencimientos y strikes concretos), que la plataforma no genera a partir de las reglas.
+`backend/data/catalogs/mexder_catalogo_2026-11-21.csv` es la revisión del catálogo tomada de las páginas «Contratos de futuro listados» y «Contratos de opción listados» de MexDer (texto copiado por el usuario el 21-nov-2026): 38 instrumentos, de los cuales 30 tienen futuro y opción, 7 solo futuro y 1 solo opción. Incluye 31 acciones con futuro, NAFTRAC ISHRS (solo opciones), 5 valores globales del SIC y el S&P/BMV IPC, con sus claves de pizarra de futuros y opciones y su símbolo de Yahoo (verificado con cotización). La opción listada como «ALFA A» (clave AL) se unificó con SIGMAF A por confirmación del usuario (21-nov-2026). Pendiente: las series vigentes de futuros y opciones (vencimientos y strikes concretos), que la plataforma no genera a partir de las reglas.
 
 ### Yahoo Finance como fuente de referencia
 
