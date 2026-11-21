@@ -166,8 +166,13 @@ class FuturesContract(Base):
     underlying_ticker: Mapped[str] = mapped_column(String(20), index=True)
     expiry: Mapped[date] = mapped_column(Date)
     multiplier: Mapped[float] = mapped_column(Numeric(18, 6))
-    tick_size: Mapped[float] = mapped_column(Numeric(18, 8))
-    tick_value: Mapped[float] = mapped_column(Numeric(18, 6))
+    tick_size: Mapped[float | None] = mapped_column(Numeric(18, 8), nullable=True)
+    tick_value: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    last_settlement: Mapped[float | None] = mapped_column(Numeric(24, 8), nullable=True)
+    previous_settlement: Mapped[float | None] = mapped_column(Numeric(24, 8), nullable=True)
+    open_interest: Mapped[float | None] = mapped_column(Numeric(24, 2), nullable=True)
+    settlement_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     currency: Mapped[str] = mapped_column(String(3))
     settlement: Mapped[str] = mapped_column(String(20))  # fisica / financiera
     initial_margin: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)  # AIM
@@ -179,7 +184,7 @@ class FuturesContract(Base):
 class OptionContract(Base):
     __tablename__ = "option_contracts"
     id: Mapped[int] = mapped_column(primary_key=True)
-    symbol: Mapped[str] = mapped_column(String(40), unique=True)
+    symbol: Mapped[str] = mapped_column(String(60), unique=True)
     underlying_ticker: Mapped[str] = mapped_column(String(20), index=True)
     option_type: Mapped[str] = mapped_column(String(4))  # call / put
     strike: Mapped[float] = mapped_column(Numeric(18, 6))
@@ -188,8 +193,36 @@ class OptionContract(Base):
     style: Mapped[str] = mapped_column(String(10))  # europea / americana
     settlement: Mapped[str] = mapped_column(String(20))
     currency: Mapped[str] = mapped_column(String(3))
+    underlying_series: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    strike_published: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    strike_scale: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)  # None = escala no verificada
+    last_settlement: Mapped[float | None] = mapped_column(Numeric(24, 8), nullable=True)
+    previous_settlement: Mapped[float | None] = mapped_column(Numeric(24, 8), nullable=True)
+    open_interest: Mapped[float | None] = mapped_column(Numeric(24, 2), nullable=True)
+    settlement_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(500))
     reviewed_on: Mapped[date] = mapped_column(Date)
+
+
+class ContractQuote(Base):
+    """Historial de precios de liquidación oficiales por contrato listado (boletines de MexDer)."""
+
+    __tablename__ = "contract_quotes"
+    __table_args__ = (UniqueConstraint("contract_kind", "symbol", "market_date", "source", name="uq_contract_quote"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_kind: Mapped[str] = mapped_column(String(10))  # futuro / opcion
+    symbol: Mapped[str] = mapped_column(String(60), index=True)
+    market_date: Mapped[date] = mapped_column(Date, index=True)
+    price_type: Mapped[str] = mapped_column(String(40), default="precio_liquidacion")
+    previous_settlement: Mapped[float | None] = mapped_column(Numeric(24, 8), nullable=True)
+    settlement: Mapped[float | None] = mapped_column(Numeric(24, 8), nullable=True)
+    open_interest: Mapped[float | None] = mapped_column(Numeric(24, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="MXN")
+    source: Mapped[str] = mapped_column(String(500))
+    origin: Mapped[str] = mapped_column(String(40), default="observado_fuente_oficial")
+    file_sha256: Mapped[str] = mapped_column(String(64))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Exposure(Base):

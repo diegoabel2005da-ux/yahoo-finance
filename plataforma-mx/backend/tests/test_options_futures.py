@@ -169,3 +169,11 @@ def test_validation_flags_naked_calls():
     assert any("descubiertas" in w for w in validate_strategy(s))
     s2 = Strategy("y", [Leg("call", 1, 100, None, 0.5, premium=3)])
     assert any("strike" in w for w in validate_strategy(s2))
+
+
+def test_implied_vol_american_short_maturity():
+    # Vencimiento corto con r alta: la cota inferior de σ debe mantener válido el árbol CRR.
+    S, K, T, r = 54.42, 55.0, 0.0767, 0.0626
+    prem = op.crr_price("call", S, K, T, r, 0.22, 0.0, 300, american=True)["price"]
+    iv = op.implied_volatility("call", prem, S, K, T, r, american=True, steps=300)
+    assert iv["implied_vol"] == pytest.approx(0.22, abs=1e-6)

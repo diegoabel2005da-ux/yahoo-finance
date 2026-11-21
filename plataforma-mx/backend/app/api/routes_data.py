@@ -449,3 +449,12 @@ def curve_cetes(req: CetesCurveReq, db: Session = Depends(get_session)):
             "notes": ["Rendimientos de subasta primaria (no curva de mercado secundario).",
                       "Las fechas de subasta pueden diferir entre plazos; se reporta cada una.",
                       "Cobertura hasta 364 días: los pagos posteriores quedarían fuera de la curva y se advierten."]}
+
+
+# ------------------------------------------------------------------ Boletines diarios de MexDer
+
+@router.post("/mexder/bulletin")
+async def mexder_bulletin(file: UploadFile = File(...), db: Session = Depends(get_session)):
+    from ..services import mexder_bulletins
+    content = await _read(file)
+    return _wrap(lambda: mexder_bulletins.import_bulletin(db, content, file.filename))

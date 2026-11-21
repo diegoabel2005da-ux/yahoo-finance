@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Plot from "@/components/Plot";
 import { AuditInfo, Card, ErrorBox, Notice, Num, OriginTag, PageHeader, Select, Stat, Table, Text, Upload, useRun } from "@/components/ui";
 import { api, Calc } from "@/lib/api";
@@ -9,10 +9,28 @@ import { money, num, pct } from "@/lib/format";
 export default function Opciones() {
   const { asset } = useAsset();
   const [contracts, setContracts] = useState<any[]>([]);
-  const load = () => api.get("/options/contracts", { underlying: asset?.ticker }).then(setContracts).catch(() => setContracts([]));
+  const [expiry, setExpiry] = useState("");
+  const [spot, setSpot] = useState<{ value: number; date: string } | null>(null);
+  const reqId = useRef(0);
+  const load = () => {
+    const id = ++reqId.current;  // se ignoran respuestas de consultas anteriores (p. ej. antes de elegir emisora)
+    if (!asset) { setContracts([]); return; }
+    api.get("/options/contracts", { underlying: asset.ticker }).then((d) => { if (id === reqId.current) setContracts(d); }).catch(() => { if (id === reqId.current) setContracts([]); });
+  };
   useEffect(() => {
     load();
+    setSpot(null);
+    if (asset) api.get(`/prices/${asset.ticker}/${encodeURIComponent(asset.series)}`).then((p) => { const last = p.rows?.at(-1); if (last) setSpot({ value: last.close, date: last.date }); }).catch(() => {});
   }, [asset]);
+  const expiries = Array.from(new Set(contracts.map((x) => x.expiry))).sort();
+  const shown = contracts.filter((x) => !expiry || x.expiry === expiry);
+  const pick = (k: any) => {
+    const ref = k.settlement_date ? new Date(k.settlement_date) : new Date();
+    const T = Math.max((new Date(k.expiry).getTime() - ref.getTime()) / (365 * 864e5), 0.0001);
+    setO({ ...o, kind: k.option_type, K: Number(k.strike), style: k.style, multiplier: Number(k.multiplier), T: +T.toFixed(6),
+      S: spot && spot.date.slice(0, 10) === k.settlement_date ? spot.value : o.S,
+      observed_premium: k.last_settlement ?? NaN, observed_premium_origin: k.last_settlement !== null ? "observado_fuente_oficial" : "" });
+  };
   const [o, setO] = useState<any>({ kind: "call", side: "long", S: NaN, K: NaN, T: 0.25, r: NaN, sigma: NaN, q: 0, style: "europea", steps: 200, tree_steps: 5, sigma_origin: "supuesto_del_usuario", observed_premium: NaN, observed_premium_origin: "", contracts: 1, multiplier: 100, divs: "" });
   const set = (k: string) => (v: any) => setO({ ...o, [k]: v });
   const { data, error, busy, run } = useRun<Calc>();
@@ -27,12 +45,34 @@ export default function Opciones() {
       <PageHeader title="Opciones" subtitle="Black-Scholes-Merton con dividendos continuos, Cox-Ross-Rubinstein (europeas y americanas, árbol y convergencia), volatilidad implícita de primas observadas y posiciones básicas." />
       <Card title={`Series de opciones importadas ${asset ? `— ${asset.ticker}` : ""}`}>
         {contracts.length ? (
-          <Table rows={contracts.map((x) => ({ símbolo: x.symbol, tipo: x.option_type, strike: x.strike, vencimiento: x.expiry, multiplicador: x.multiplier, estilo: x.style, liquidación: x.settlement, fuente: x.source }))} />
+          <>
+            <div className="mb-2 flex flex-wrap items-end gap-2">
+              <div className="w-48"><Select label="Vencimiento" value={expiry} onChange={setExpiry} options={[["", `Todos (${contracts.length})`], ...expiries.map((e) => [e, e] as [string, string])]} /></div>
+              {spot && <p className="text-xs text-slate-500">Último cierre del subyacente: {spot.value} ({spot.date.slice(0, 10)})</p>}
+            </div>
+            <div className="max-h-80 overflow-auto rounded border border-slate-200 dark:border-navy-700">
+              <table className="tbl">
+                <thead><tr>{["", "Tipo", "Strike", "Strike publicado", "Vencimiento", "Precio de liquidación", "Liq. anterior", "Interés abierto", "Estilo", "Mult."].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {shown.slice(0, 600).map((x) => (
+                    <tr key={x.id}>
+                      <td><button className="btn-ghost px-2 py-0.5 text-xs" onClick={() => pick(x)}>Valorar</button></td>
+                      <td>{x.option_type}</td><td className={x.strike_scale === null && x.underlying_ticker !== "IPC" && x.underlying_ticker !== "USD" ? "text-red-600" : ""}>{x.strike}</td><td>{x.strike_published ?? "—"}</td><td>{x.expiry}</td><td>{x.last_settlement ?? "—"}</td>
+                      <td>{x.previous_settlement ?? "—"}</td><td>{x.open_interest ?? "—"}</td><td>{x.style}</td><td>{x.multiplier}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {contracts[0]?.notes && <Notice tone={contracts[0].notes.includes("ADVERTENCIA") || contracts[0].notes.includes("NO VERIFICADA") ? "warn" : "info"}>{contracts[0].notes}</Notice>}
+            <p className="mt-1 text-[11px] text-slate-500">Fuente: {contracts[0]?.source}. El precio de liquidación es el precio oficial de MexDer; si la serie no operó, MexDer lo determina con su metodología. «Valorar» precarga la serie, la prima oficial y el último cierre del subyacente (si es de la misma fecha).</p>
+          </>
         ) : (
           <Notice tone="warn">Sin series importadas. Se puede valorar una opción teórica, pero no se presentará como contrato listado.</Notice>
         )}
         <div className="mt-3">
-          <Upload endpoint="/options/contracts/import" label="Series de opciones (MexDer)" template="option_contracts_template.csv" onDone={load} />
+          <Upload endpoint="/mexder/bulletin" label="Boletín diario de opciones de MexDer (PDF)" onDone={load} />
+          <div className="mt-2"><Upload endpoint="/options/contracts/import" label="O series en CSV/Excel" template="option_contracts_template.csv" onDone={load} /></div>
         </div>
       </Card>
       <Card title="Valuación" className="mt-4">

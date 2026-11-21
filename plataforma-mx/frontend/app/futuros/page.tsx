@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Plot from "@/components/Plot";
 import { AuditInfo, Card, ErrorBox, Notice, Num, PageHeader, Select, Stat, Table, Text, Upload, useRun } from "@/components/ui";
 import { api, Calc } from "@/lib/api";
@@ -9,7 +9,12 @@ import { money, num, pct } from "@/lib/format";
 export default function Futuros() {
   const { asset } = useAsset();
   const [contracts, setContracts] = useState<any[]>([]);
-  const load = () => api.get("/futures/contracts", { underlying: asset?.ticker }).then(setContracts).catch(() => setContracts([]));
+  const reqId = useRef(0);
+  const load = () => {
+    const id = ++reqId.current;  // se ignoran respuestas de consultas anteriores (p. ej. antes de elegir emisora)
+    if (!asset) { setContracts([]); return; }
+    api.get("/futures/contracts", { underlying: asset.ticker }).then((d) => { if (id === reqId.current) setContracts(d); }).catch(() => { if (id === reqId.current) setContracts([]); });
+  };
   useEffect(() => {
     load();
   }, [asset]);
@@ -36,17 +41,21 @@ export default function Futuros() {
       <PageHeader title="Futuros" subtitle="Contratos realmente listados (importados de MexDer), P&L de posturas largas y cortas, AIMs, liquidación diaria, necesidades de liquidez y stop-loss hipotético. Los futuros no tienen estilo americano ni europeo." />
       <Card title={`Contratos listados importados ${asset ? `— ${asset.ticker}` : ""}`}>
         {contracts.length ? (
-          <Table rows={contracts.map((x) => ({ símbolo: x.symbol, subyacente: x.underlying_ticker, vencimiento: x.expiry, multiplicador: x.multiplier, tick: x.tick_size, "valor tick": x.tick_value, moneda: x.currency, liquidación: x.settlement, AIM: x.initial_margin ?? "no importada", "AIM al": x.margin_as_of ?? "—", fuente: x.source, revisión: x.reviewed_on }))} />
+          <>
+          <Table rows={contracts.map((x) => ({ símbolo: x.symbol, vencimiento: x.expiry, "precio de liquidación": x.last_settlement ?? "—", "liq. anterior": x.previous_settlement ?? "—", "interés abierto": x.open_interest ?? "—", fecha: x.settlement_date ?? "—", multiplicador: x.multiplier, puja: x.tick_size ?? "no publicada", "valor puja": x.tick_value ?? "—", "tipo de liquidación": x.settlement, AIM: x.initial_margin ?? "no importada", nota: x.notes ?? "" }))} />
+          <p className="mt-1 text-[11px] text-slate-500">Fuente: {contracts[0]?.source}</p>
+          </>
         ) : (
           <Notice tone="warn">Sin contratos importados para este subyacente. Las fechas de vencimiento deben ser las contractuales publicadas por MexDer; la plataforma no las genera.</Notice>
         )}
         <div className="mt-3">
-          <Upload endpoint="/futures/contracts/import" label="Especificaciones de contratos (MexDer)" template="futures_contracts_template.csv" onDone={load} />
+          <Upload endpoint="/mexder/bulletin" label="Boletín diario de futuros de MexDer (PDF)" onDone={load} />
+          <div className="mt-2"><Upload endpoint="/futures/contracts/import" label="O especificaciones en CSV/Excel" template="futures_contracts_template.csv" onDone={load} /></div>
         </div>
       </Card>
       <Card title="Análisis de postura" className="mt-4">
         <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
-          <Select label="Contrato" value={f.contract_symbol} onChange={(v) => { const k = contracts.find((x) => x.symbol === v); setF({ ...f, contract_symbol: v, multiplier: k ? Number(k.multiplier) : f.multiplier, tick: k ? Number(k.tick_size) : f.tick }); }} options={[["", "Teórico (sin contrato)"], ...contracts.map((x) => [x.symbol, `${x.symbol} ${x.expiry}`] as [string, string])]} />
+          <Select label="Contrato" value={f.contract_symbol} onChange={(v) => { const k = contracts.find((x) => x.symbol === v); setF({ ...f, contract_symbol: v, multiplier: k ? Number(k.multiplier) : f.multiplier, tick: k?.tick_size ? Number(k.tick_size) : f.tick, f_initial: k?.last_settlement ? Number(k.last_settlement) : f.f_initial }); }} options={[["", "Teórico (sin contrato)"], ...contracts.map((x) => [x.symbol, `${x.symbol} ${x.expiry}`] as [string, string])]} />
           <Select label="Postura" value={f.side} onChange={set("side")} options={[["long", "Compra"], ["short", "Venta"]]} />
           <Num label="Contratos" value={f.contracts} onChange={set("contracts")} />
           <Num label="Multiplicador" value={f.multiplier} onChange={set("multiplier")} />

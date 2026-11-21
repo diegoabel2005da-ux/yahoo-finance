@@ -25,7 +25,7 @@ backend/   Python · FastAPI · SQLAlchemy (PostgreSQL vía DATABASE_URL; SQLite
                    IA explicativa, reportes Excel/PDF
   app/api/         rutas REST (cada cálculo devuelve un audit_id reproducible)
   data/templates/  plantillas CSV de importación (sólo encabezados, sin datos)
-  tests/           70 pruebas: valores de referencia independientes, no arbitraje, integración de la API
+  tests/           74 pruebas: valores de referencia independientes, no arbitraje, integración de la API
 frontend/  Next.js 15 · React 19 · TypeScript · Tailwind · Plotly (16 módulos del menú)
 docs/      metodología financiera y técnica
 ```
@@ -78,6 +78,15 @@ cd backend && python -m pytest -q
 ### Catálogo cargado
 
 `backend/data/catalogs/mexder_catalogo_2026-11-21.csv` es la revisión del catálogo tomada de las páginas «Contratos de futuro listados» y «Contratos de opción listados» de MexDer (texto copiado por el usuario el 21-nov-2026): 38 instrumentos, de los cuales 30 tienen futuro y opción, 7 solo futuro y 1 solo opción. Incluye 31 acciones con futuro, NAFTRAC ISHRS (solo opciones), 5 valores globales del SIC y el S&P/BMV IPC, con sus claves de pizarra de futuros y opciones y su símbolo de Yahoo (verificado con cotización). La opción listada como «ALFA A» (clave AL) se unificó con SIGMAF A por confirmación del usuario (21-nov-2026). Pendiente: las series vigentes de futuros y opciones (vencimientos y strikes concretos), que la plataforma no genera a partir de las reglas.
+
+### Boletines diarios de MexDer
+
+`POST /api/mexder/bulletin` (botones en «Futuros» y «Opciones») importa el PDF del boletín básico de futuros u opciones. Se leen las secciones «Precios de liquidación e interés abierto»: cada serie vigente con su vencimiento real, la liquidación anterior y la actual, y el interés abierto. Las series se guardan como contratos listados, con historial por fecha en `contract_quotes`. El boletín del 20-nov-2026 dejó 424 series de futuros y 6,336 de opciones.
+
+- **Alias del boletín:** ALFA A → SIGMAF A (confirmado por el usuario), AMERICA MOVIL B → AMX B, KOF L → KOF UBL, WALMEX V → WALMEX *. Quedan anotados en cada contrato.
+- **Escala de strikes:** para varios subyacentes el boletín publica el strike dividido entre 100 (p. ej. ASUR «5.2» = $520). La escala se infiere en cada importación con la paridad put-call del vencimiento más cercano, contra el cierre del mismo día. Se guardan el strike publicado, el factor y la evidencia. Si no se puede decidir, la serie queda marcada como «escala no verificada». Si la paridad se desvía más de un 3 % tras la escala, se advierte que el precio del subyacente disponible no coincide con el de referencia de MexDer: el 20-nov ocurrió con META, NVDA y TSLA, cuyo precio del SIC en Yahoo difiere.
+- **Precio de liquidación de opciones:** es el precio oficial que publica MexDer para cada serie. Si la serie no operó, MexDer lo determina con su metodología, así que no equivale a una prima negociada.
+- **Pendiente:** las AIMs, que publica Asigna y no vienen en estos boletines.
 
 ### Yahoo Finance como fuente de referencia
 

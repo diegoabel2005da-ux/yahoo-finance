@@ -598,9 +598,15 @@ def scenarios_equity(req: EquityScenarioReq, db: Session = Depends(get_session))
         c = db.scalar(select(FuturesContract).where(FuturesContract.symbol == req.futures_symbol))
         if not c:
             raise HTTPException(404, "contrato de futuro no encontrado")
-        if req.futures_price is None or not req.futures_price_source:
-            raise HTTPException(422, "indique el precio del futuro observado y su fuente")
-        fut = {"price": req.futures_price, "status": "listado_verificado", "source": req.futures_price_source}
+        price, src = req.futures_price, req.futures_price_source
+        if price is None and c.last_settlement is not None:
+            price, src = float(c.last_settlement), f"precio de liquidación {c.settlement_date} · {c.source}"
+        if price is None or not src:
+            raise HTTPException(422, "indique el precio del futuro observado y su fuente (o importe el boletín de MexDer)")
+        fut = {"price": price, "status": "listado_verificado", "source": src}
+        opt_T = (c.expiry - df.index.max().date()).days / 365.0
+        if req.option_expiry_years is None and opt_T > 0:
+            req.option_expiry_years = opt_T
     try:
         strats = {k: sc.equity_strategy_set(exp, p, req.multiplier, req.templates, req.option_expiry_years, fut,
                                             commission_per_contract=req.commission_per_contract)

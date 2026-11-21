@@ -105,6 +105,10 @@ def implied_volatility(kind: str, observed_premium: float, S, K, T, r, q=0.0, am
     if not (lo - 1e-12 <= observed_premium <= hi + 1e-12):
         raise ValueError(f"prima {observed_premium} fuera de cotas de no arbitraje [{lo:.6f}, {hi:.6f}]")
 
+    if american:
+        # El árbol CRR exige σ√Δt > |r − q|Δt para que p ∈ (0,1): la búsqueda empieza en ese mínimo.
+        lo_vol = max(lo_vol, 1.05 * abs(r - q) * math.sqrt(T / steps))
+
     def f(sig):
         if american:
             return crr_price(kind, S, K, T, r, sig, q, steps, american=True)["price"] - observed_premium
