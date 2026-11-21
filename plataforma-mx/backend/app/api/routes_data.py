@@ -403,3 +403,45 @@ def yahoo_refresh(db: Session = Depends(get_session)):
                     "accepted_rows": imp["accepted_rows"], "rejected": len(res["pre_rejected"]) + len(imp["rejected"]),
                     "discrepancies": len(imp.get("discrepancies", []))})
     return out
+
+
+# ------------------------------------------------------------------ Curva CETES (Banxico)
+
+class CetesCurveReq(BaseModel):
+    curve_date: date | None = None
+    max_age_days: int = 10
+    interpolation: str = "log_linear_df"
+
+
+@router.post("/curves/banxico-cetes")
+def curve_cetes(req: CetesCurveReq, db: Session = Depends(get_session)):
+    """Curva cero desde los rendimientos de la subasta semanal de CETES (Banxico SIE).
+
+    Nodos: 28, 91, 182 y 364 días; tasa de rendimiento simple ACT/360 publicada por Banxico.
+    Para cada plazo se toma la última subasta con fecha ≤ fecha de la curva; si alguna es más
+    antigua que `max_age_days`, la curva NO se construye. Cobertura máxima: 364 días."""
+    from datetime import timedelta
+    import io
+    import pandas as pd
+
+    cd = req.curve_date or date.today()
+    nodes, used = [], []
+    for code, days in connectors.CETES_TENORS.items():
+        res = connectors.fetch_banxico(code, cd - timedelta(days=40), cd)
+        if res["status"] != "ok" or not res["rows"]:
+            raise HTTPException(422, f"{code}: {res.get('reason', 'sin observaciones en las últimas semanas')}")
+        last = max(res["rows"], key=lambda r: r["market_date"])
+        obs_date = date.fromisoformat(last["market_date"])
+        if (cd - obs_date).days > req.max_age_days:
+            raise HTTPException(422, f"{code}: última subasta {obs_date} con más de {req.max_age_days} días de antigüedad")
+        nodes.append({"days": days, "value": float(last["value_pct"]) / 100})
+        used.append({"tenor": code, "series": res["series"], "auction_date": obs_date.isoformat(), "yield_pct": last["value_pct"]})
+    buf = io.BytesIO()
+    pd.DataFrame(nodes).to_csv(buf, index=False)
+    source = "Banxico SIE · subasta semanal de CETES · " + "; ".join(f"{u['tenor']} {u['yield_pct']}% ({u['auction_date']})" for u in used)
+    res = _wrap(lambda: importers.import_curve(db, buf.getvalue(), "cetes.csv", f"CETES Banxico {cd}", cd, "zero_rate",
+                                               "simple", "ACT/360", req.interpolation, source, "observado_fuente_oficial"))
+    return {**res, "auctions": used,
+            "notes": ["Rendimientos de subasta primaria (no curva de mercado secundario).",
+                      "Las fechas de subasta pueden diferir entre plazos; se reporta cada una.",
+                      "Cobertura hasta 364 días: los pagos posteriores quedarían fuera de la curva y se advierten."]}

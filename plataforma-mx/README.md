@@ -25,7 +25,7 @@ backend/   Python · FastAPI · SQLAlchemy (PostgreSQL vía DATABASE_URL; SQLite
                    IA explicativa, reportes Excel/PDF
   app/api/         rutas REST (cada cálculo devuelve un audit_id reproducible)
   data/templates/  plantillas CSV de importación (sólo encabezados, sin datos)
-  tests/           69 pruebas: valores de referencia independientes, no arbitraje, integración de la API
+  tests/           70 pruebas: valores de referencia independientes, no arbitraje, integración de la API
 frontend/  Next.js 15 · React 19 · TypeScript · Tailwind · Plotly (16 módulos del menú)
 docs/      metodología financiera y técnica
 ```
@@ -85,6 +85,11 @@ Por decisión del usuario (uso personal y de investigación, términos de Yahoo 
 - `Close` de Yahoo está ajustado por splits; `Adj Close` (dividendos) se guarda como cierre ajustado. Ninguno equivale necesariamente al precio de la subasta de cierre de la BMV.
 - Endpoints: `POST /api/yahoo/prices`, `POST /api/yahoo/refresh` (todas las vigentes, incremental), `POST /api/yahoo/financials`, `GET /api/yahoo/dividends/{ticker}/{serie}`.
 - Red: el entorno necesita acceso a `query1.finance.yahoo.com`, `query2.finance.yahoo.com`, `fc.yahoo.com` y `finance.yahoo.com`.
+
+### Banxico (SIE)
+
+Con `BANXICO_TOKEN` configurado, `POST /api/rates/banxico` descarga series oficiales. Los identificadores se verificaron contra el título oficial que devuelve la API de Banxico (21-nov-2026): TIIE 28 `SF43783`, TIIE 91 `SF43878`, TIIE 182 `SF111916`, TIIE de Fondeo `SF331451`, tasa objetivo `SF61745`, y CETES 28/91/182/364 `SF43936`/`SF43939`/`SF43942`/`SF43945`.
+`POST /api/curves/banxico-cetes` construye una curva cero con los rendimientos de la última subasta semanal de CETES (simple ACT/360, nodos de 28 a 364 días). Si alguna subasta es demasiado antigua, la curva no se construye. Requiere acceso de red a `www.banxico.org.mx`. El token no se guarda en el repositorio.
 
 ### Estado de las fuentes en este entorno de desarrollo
 

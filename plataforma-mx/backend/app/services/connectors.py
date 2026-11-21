@@ -24,11 +24,20 @@ SOURCES = {
     "INEGI": {"url": "https://www.inegi.org.mx/servicios/api_indicadores.html", "access": "API de indicadores: requiere token (INEGI_TOKEN)."},
 }
 
-# Series SIE configurables. Los identificadores DEBEN verificarse en el catálogo SIE de Banxico;
-# se pueden sobrescribir con la variable de entorno BANXICO_SERIES="CODIGO=SFxxxx,CODIGO2=SFyyyy".
+# Series SIE verificadas contra el título oficial devuelto por la API de Banxico (21-nov-2026).
+# Se pueden añadir o sobrescribir con BANXICO_SERIES="CODIGO=SFxxxx,CODIGO2=SFyyyy".
 DEFAULT_BANXICO_SERIES = {
-    "TIIE_28": "SF43783",   # TIIE a 28 días — verificar en el catálogo SIE
+    "TIIE_28": "SF43783",        # TIIE a 28 días, % anual
+    "TIIE_91": "SF43878",        # TIIE a 91 días
+    "TIIE_182": "SF111916",      # TIIE a 182 días
+    "TIIE_FONDEO": "SF331451",   # TIIE de Fondeo a un día hábil bancario (mediana ponderada por volumen)
+    "TASA_OBJETIVO": "SF61745",  # Tasa objetivo de Banxico
+    "CETES_28": "SF43936",       # Cetes 28 días, tasa de rendimiento de la subasta semanal
+    "CETES_91": "SF43939",
+    "CETES_182": "SF43942",
+    "CETES_364": "SF43945",
 }
+CETES_TENORS = {"CETES_28": 28, "CETES_91": 91, "CETES_182": 182, "CETES_364": 364}
 
 
 def banxico_series_map() -> dict[str, str]:

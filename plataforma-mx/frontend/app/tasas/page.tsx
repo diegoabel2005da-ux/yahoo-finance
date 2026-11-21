@@ -14,6 +14,8 @@ export default function Tasas() {
   const [curve, setCurve] = useState<any>(null);
   const [bx, setBx] = useState({ rate_code: "TIIE_28", start: "", end: "" });
   const fetchBx = useRun<any>();
+  const cetes = useRun<any>();
+  const [cetesDate, setCetesDate] = useState("");
   const [cf, setCf] = useState({ name: "", curve_date: "", quote_kind: "zero_rate_pct", compounding: "continua", day_count: "ACT/360", interpolation: "log_linear_df", source: "", origin: "observado_proveedor_secundario" });
   const loadRates = () => api.get("/rates").then(setRates).catch(() => {});
   const loadCurves = () => api.get("/curves").then(setCurves).catch(() => {});
@@ -44,7 +46,7 @@ export default function Tasas() {
           )}
           <h3 className="mt-4 text-xs font-semibold uppercase text-slate-500">Banxico SIE</h3>
           <div className="grid grid-cols-3 gap-2">
-            <Text label="Código" value={bx.rate_code} onChange={(v) => setBx({ ...bx, rate_code: v })} />
+            <Select label="Serie" value={bx.rate_code} onChange={(v) => setBx({ ...bx, rate_code: v })} options={["TIIE_28", "TIIE_91", "TIIE_182", "TIIE_FONDEO", "TASA_OBJETIVO", "CETES_28", "CETES_91", "CETES_182", "CETES_364"].map((x) => [x, x])} />
             <Text label="Desde" type="date" value={bx.start} onChange={(v) => setBx({ ...bx, start: v })} />
             <Text label="Hasta" type="date" value={bx.end} onChange={(v) => setBx({ ...bx, end: v })} />
           </div>
@@ -92,6 +94,17 @@ export default function Tasas() {
           <Select label="Interpolación" value={cf.interpolation} onChange={(v) => setCf({ ...cf, interpolation: v })} options={[["log_linear_df", "Log-lineal en DF (forward constante)"], ["linear_zero", "Lineal en tasa cero"]]} />
           <Text label="Fuente" value={cf.source} onChange={(v) => setCf({ ...cf, source: v })} />
           <Select label="Origen" value={cf.origin} onChange={(v) => setCf({ ...cf, origin: v })} options={[["observado_fuente_oficial", "Fuente oficial"], ["observado_proveedor_secundario", "Proveedor"], ["supuesto_del_usuario", "Hipotética (supuesto)"]]} />
+        </div>
+        <div className="mt-2 rounded border border-slate-200 p-2 dark:border-navy-700">
+          <h3 className="text-xs font-semibold uppercase text-slate-500">Curva oficial CETES (Banxico, subasta semanal)</h3>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-44"><Text label="Fecha de la curva" type="date" value={cetesDate} onChange={setCetesDate} /></div>
+            <button className="btn" disabled={cetes.busy} onClick={() => cetes.run(async () => { const r = await api.post("/curves/banxico-cetes", { curve_date: cetesDate || null }); loadCurves(); setCurveId(String(r.curve_id)); return r; })}>
+              {cetes.busy ? "Construyendo…" : "Construir curva CETES"}
+            </button>
+          </div>
+          <ErrorBox error={cetes.error} />
+          {cetes.data && <p className="mt-1 text-xs">Curva #{cetes.data.curve_id}: {cetes.data.auctions.map((a: any) => `${a.tenor} ${a.yield_pct}% (${a.auction_date})`).join(" · ")}. {cetes.data.notes.join(" ")}</p>}
         </div>
         <div className="mt-2">
           <Upload endpoint="/curves/import" label="Nodos (days, value)" extra={cf} template="curve_template.csv" onDone={loadCurves} />

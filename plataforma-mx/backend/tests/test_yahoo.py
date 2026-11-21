@@ -81,3 +81,23 @@ def test_unreachable_is_reported_not_invented(monkeypatch):
     monkeypatch.setattr(yahoo, "_yf", lambda: Boom)
     r = yahoo.fetch_prices("X", "*", None, None)
     assert r["status"] == "no_disponible" and "bloqueado" in r["reason"]
+
+
+def test_cetes_curve_builds_and_rejects_stale(monkeypatch):
+    """Curva CETES con el conector de Banxico SIMULADO (cifras sintéticas)."""
+    from app.services import connectors
+
+    def fake(code, start, end, timeout=15.0, auction="2026-11-19"):
+        y = {"CETES_28": "6.10", "CETES_91": "6.40", "CETES_182": "6.60", "CETES_364": "6.90"}[code]
+        return {"status": "ok", "series": "SF-TEST", "rows": [{"market_date": auction, "value_pct": y}]}
+
+    monkeypatch.setattr(connectors, "fetch_banxico", fake)
+    c = TestClient(create_app("sqlite://"))
+    r = c.post("/api/curves/banxico-cetes", json={"curve_date": "2026-11-20"})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert [n["days"] for n in j["nodes"]] == [28, 91, 182, 364]
+    import math
+    assert j["nodes"][0]["zero_cont"] == pytest.approx(math.log(1 + 0.061 * 28 / 360) / (28 / 365))
+    monkeypatch.setattr(connectors, "fetch_banxico", lambda code, s, e, timeout=15.0: fake(code, s, e, auction="2026-10-01"))
+    assert c.post("/api/curves/banxico-cetes", json={"curve_date": "2026-11-20"}).status_code == 422
