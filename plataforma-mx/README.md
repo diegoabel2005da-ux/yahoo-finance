@@ -75,6 +75,10 @@ cd backend && python -m pytest -q
 - Las volatilidades implícitas sólo se calibran a partir de primas **observadas**. Una prima de modelo se rechaza.
 - Los caps y floors se presentan como **instrumentos OTC parametrizados (teóricos)**. No se afirma que coticen en MexDer.
 
+### Catálogo cargado
+
+`backend/data/catalogs/mexder_futuros_2026-11-21.csv` es la revisión del catálogo tomada de la página «Contratos de futuro listados» de MexDer (texto copiado por el usuario el 21-nov-2026). Contiene 31 acciones mexicanas con futuro listado, 5 valores globales del SIC y el S&P/BMV IPC, cada uno con su clave de pizarra y su símbolo de Yahoo (verificado con cotización). Pendiente: la lista de **opciones** de MexDer y las series vigentes de cada futuro, como DC26 o MR27; la plataforma no las genera a partir de la regla de vencimiento.
+
 ### Yahoo Finance como fuente de referencia
 
 Por decisión del usuario (uso personal y de investigación, términos de Yahoo revisados y aceptados), **Yahoo Finance** (librería `yfinance`) es la fuente de referencia de precios, estados financieros y dividendos. Sus observaciones se registran como fuente oficial/de referencia, con la fuente siempre explícita («Yahoo Finance (yfinance) · fuente de referencia designada por el usuario · SÍMBOLO»).
