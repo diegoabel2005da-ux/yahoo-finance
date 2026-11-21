@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+html.dark { color-scheme: dark; }
+body { @apply bg-slate-50 text-slate-900 dark:bg-navy-950 dark:text-slate-100; }
+
+@layer components {
+  .card { @apply rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-navy-700 dark:bg-navy-900; }
+  .card-title { @apply mb-3 text-sm font-semibold uppercase tracking-wide text-navy-900 dark:text-turq; }
+  .input { @apply w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm tabular-nums focus:border-turq focus:outline-none focus:ring-1 focus:ring-turq dark:border-navy-700 dark:bg-navy-950; }
+  .label { @apply mb-0.5 block text-xs font-medium text-slate-600 dark:text-slate-400; }
+  .btn { @apply inline-flex items-center gap-1 rounded bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-turq-700 dark:hover:bg-turq-600; }
+  .btn-ghost { @apply inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-navy-700 dark:hover:bg-navy-800; }
+  .tbl { @apply w-full text-left text-xs tabular-nums; }
+  .tbl th { @apply sticky top-0 border-b border-slate-200 bg-slate-100 px-2 py-1 font-semibold text-slate-700 dark:border-navy-700 dark:bg-navy-800 dark:text-slate-200; }
+  .tbl td { @apply border-b border-slate-100 px-2 py-1 dark:border-navy-800; }
+  .tag { @apply inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide; }
+}
