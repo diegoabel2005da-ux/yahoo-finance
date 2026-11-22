@@ -82,6 +82,22 @@ El repositorio incluye los datos base para que la plataforma funcione en cualqui
 - **Escala de strikes sin precios:** si al cargar no hay precios del subyacente para la paridad put-call, la escala se resuelve con los strikes del archivo de AIM, que vienen en escala real. Con los datos del 20-nov-2026, ambos métodos dan la misma escala en los 30 subyacentes.
 - **Boletines nuevos:** se agregan con el botón de Futuros u Opciones, o dejando el PDF en `data/seed/mexder/` con la fecha al inicio del nombre.
 
+## Supabase (PostgreSQL alojado)
+
+La plataforma funciona sobre PostgreSQL sin cambios: la carga semilla, Yahoo, Banxico, análisis, derivados, escenarios, reportes y estudios se probaron sobre PostgreSQL 16 (Supabase usa 15/17).
+
+1. En Supabase, abre **Project Settings → Database → Connection string** y copia la URI del **Session pooler** (es compatible con IPv4).
+2. Define, en el servidor donde corra el backend (nunca en el repositorio):
+   ```
+   DATABASE_URL=postgresql+psycopg://postgres.<project_ref>:<CONTRASEÑA>@aws-0-<región>.pooler.supabase.com:5432/postgres?sslmode=require
+   ```
+3. Arranca el backend. Las tablas se crean en el esquema **`plataforma`** (configurable con `DB_SCHEMA`) y no en `public`, porque Supabase publica `public` por su API REST con la llave pública del proyecto. Si decides usar `public`, activa Row Level Security en todas las tablas.
+4. Con la base vacía se cargan los datos semilla. Luego pulsa «Actualizar todos los datos» en Inicio.
+
+**MCP de Supabase:** `.mcp.json` (raíz del repo) registra el servidor MCP del proyecto `tlwqadsvlnrrhakuxojq`. Claude Code pide aprobarlo y autenticarse con Supabase la primera vez. Permite consultar y administrar la base por HTTPS desde sesiones de Claude.
+
+**Nota sobre entornos en la nube de Claude Code:** esos contenedores sólo salen a internet por HTTPS mediante un proxy, así que el backend no puede abrir ahí una conexión directa de PostgreSQL (puerto 5432) hacia Supabase. En tu computadora o en un servidor (Render, Railway, Fly.io, una VM…) funciona con la `DATABASE_URL` anterior.
+
 ## Veracidad de los datos
 
 - **No hay datos precargados.** El catálogo, los precios, las tasas, las curvas, los contratos y los estados financieros entran por conectores autorizados o por importación validada de CSV/Excel (`data/templates/`).

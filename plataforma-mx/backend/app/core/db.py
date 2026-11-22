@@ -5,12 +5,15 @@ import os
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
-    JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text,
-    UniqueConstraint, create_engine,
+    JSON, Boolean, Date, DateTime, ForeignKey, Integer, MetaData, Numeric, String, Text,
+    UniqueConstraint, create_engine, text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./plataforma.db")
+# Esquema de PostgreSQL para las tablas de la plataforma. En Supabase conviene uno distinto de «public»,
+# que se publica automáticamente por la API REST del proyecto. En SQLite no aplica.
+DB_SCHEMA = os.environ.get("DB_SCHEMA") or (None if DATABASE_URL.startswith("sqlite") else "plataforma")
 
 
 def utcnow() -> datetime:
@@ -18,7 +21,7 @@ def utcnow() -> datetime:
 
 
 class Base(DeclarativeBase):
-    pass
+    metadata = MetaData(schema=DB_SCHEMA)
 
 
 class Instrument(Base):
@@ -298,6 +301,12 @@ def init_db(url: str | None = None):
         from sqlalchemy.pool import StaticPool
         kwargs["poolclass"] = StaticPool
     _engine = create_engine(url, future=True, **kwargs)
+    if url.startswith("sqlite"):
+        # SQLite no tiene esquemas: las tablas se crean sin prefijo.
+        _engine = _engine.execution_options(schema_translate_map={DB_SCHEMA: None} if DB_SCHEMA else None)
+    elif DB_SCHEMA:
+        with _engine.begin() as conn:
+            conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{DB_SCHEMA}"'))
     Base.metadata.create_all(_engine)
     SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
     return _engine
