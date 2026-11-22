@@ -11,6 +11,9 @@ export default function Home() {
   const [disc, setDisc] = useState<any[]>([]);
   const [audit, setAudit] = useState<any[]>([]);
   const [seed, setSeed] = useState<any>(null);
+  const [adminReq, setAdminReq] = useState(false);
+  const [token, setToken] = useState("");
+  const [hasToken, setHasToken] = useState(false);
   const loadSeed = () => api.get("/seed/status").then(setSeed).catch(() => {});
   useEffect(() => {
     api.get("/sources/status").then(setSources).catch(() => setSources([]));
@@ -18,7 +21,10 @@ export default function Home() {
     api.get("/discrepancies").then(setDisc).catch(() => {});
     api.get("/audit", { limit: 10 }).then(setAudit).catch(() => {});
     loadSeed();
+    api.get("/admin/status").then((d) => setAdminReq(d.admin_token_required)).catch(() => {});
+    try { setHasToken(!!localStorage.getItem("adminToken")); } catch {}
   }, []);
+  const saveToken = () => { try { token ? localStorage.setItem("adminToken", token) : localStorage.removeItem("adminToken"); setHasToken(!!token); setToken(""); } catch {} };
   useEffect(() => {
     if (!seed || !["en curso", "pendiente"].some((x) => seed.local === x || seed.online === x)) return;
     const t = setTimeout(loadSeed, 4000);
@@ -52,6 +58,16 @@ export default function Home() {
           </ol>
         </Card>
       </div>
+      {adminReq && (
+        <Card title="Token de administrador" className="mt-4">
+          <p className="text-xs text-slate-600 dark:text-slate-400">Esta instalación es pública: consultar y calcular está abierto, pero importar o actualizar datos requiere el token de administrador. Se guarda sólo en este navegador.</p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <input className="input max-w-xs" type="password" placeholder={hasToken ? "Token guardado en este navegador" : "Pegue el token"} value={token} onChange={(e) => setToken(e.target.value)} />
+            <button className="btn" onClick={saveToken}>{token ? "Guardar token" : hasToken ? "Quitar token" : "Guardar token"}</button>
+            <span className="text-xs">{hasToken ? "✓ Modo administrador activo en este navegador" : "Modo de sólo consulta"}</span>
+          </div>
+        </Card>
+      )}
       <Card title="Datos de la plataforma" className="mt-4" actions={
         <button className="btn" disabled={seed?.online === "en curso"} onClick={() => api.post("/seed/refresh", {}).then(loadSeed)}>
           {seed?.online === "en curso" ? "Actualizando…" : "Actualizar todos los datos (en línea)"}

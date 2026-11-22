@@ -1,3 +1,13 @@
+/** Token de administrador guardado en este navegador (sólo para operaciones que modifican datos). */
+export function adminHeaders(): Record<string, string> {
+  try {
+    const t = localStorage.getItem("adminToken");
+    return t ? { "X-Admin-Token": t } : {};
+  } catch {
+    return {};
+  }
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -27,10 +37,10 @@ export const api = {
     return fetch(`/api${path}${q}`, { cache: "no-store" }).then((r) => handle<T>(r));
   },
   post: <T = any>(path: string, body: unknown) =>
-    fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => handle<T>(r)),
-  form: <T = any>(path: string, form: FormData) => fetch(`/api${path}`, { method: "POST", body: form }).then((r) => handle<T>(r)),
+    fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...adminHeaders() }, body: JSON.stringify(body) }).then((r) => handle<T>(r)),
+  form: <T = any>(path: string, form: FormData) => fetch(`/api${path}`, { method: "POST", body: form, headers: adminHeaders() }).then((r) => handle<T>(r)),
   download: async (path: string, body: unknown, filename: string) => {
-    const r = await fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r = await fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...adminHeaders() }, body: JSON.stringify(body) });
     const blob = await handle<Blob>(r);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

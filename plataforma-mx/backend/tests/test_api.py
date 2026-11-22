@@ -230,3 +230,16 @@ def test_ratios_auto_inputs_and_currency_guard(client):
     r = client.post("/api/ratios", json={"ticker": "FICTA", "period_type": "FY"}).json()["result"]
     assert r["ratios"]["pe"]["value"] is None and any("no se calculan múltiplos" in n for n in r["notes"])
     assert r["ratios"]["margen_neto"]["value"] == pytest.approx(0.1)
+
+
+def test_admin_token_protects_data_changes(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "secreto-de-prueba")
+    r = client.post("/api/catalog/import", files={"file": ("c.csv", catalog_csv())}, data={"source": SRC})
+    assert r.status_code == 403
+    assert client.get("/api/catalog").status_code == 200                       # consultar sigue abierto
+    assert client.post("/api/options/value", json={"kind": "call", "S": 100, "K": 100, "T": 0.5, "r": 0.1,
+                                                   "sigma": 0.3}).status_code == 200   # calcular sigue abierto
+    r = client.post("/api/catalog/import", files={"file": ("c.csv", catalog_csv())}, data={"source": SRC},
+                    headers={"X-Admin-Token": "secreto-de-prueba"})
+    assert r.status_code == 200
+    assert client.get("/api/admin/status").json()["admin_token_required"] is True

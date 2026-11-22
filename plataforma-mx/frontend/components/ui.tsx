@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ORIGIN_LABEL } from "@/lib/format";
+import { adminHeaders } from "@/lib/api";
 
 export function Card({ title, children, actions, className = "" }: { title?: string; children: React.ReactNode; actions?: React.ReactNode; className?: string }) {
   return (
@@ -68,7 +69,7 @@ export function ErrorBox({ error }: { error: any }) {
   if (!error) return null;
   return (
     <div role="alert" className="my-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
-      <strong>{error.status === 409 ? "Cálculo bloqueado: " : error.status === 422 ? "Datos insuficientes o inválidos: " : "Error: "}</strong>
+      <strong>{error.status === 403 ? "Acceso restringido: " : error.status === 409 ? "Cálculo bloqueado: " : error.status === 422 ? "Datos insuficientes o inválidos: " : "Error: "}</strong>
       {String(error.message ?? error)}
     </div>
   );
@@ -150,7 +151,7 @@ export function Upload({ endpoint, label, extra, onDone, template }: { endpoint:
     fd.append("file", file);
     Object.entries(extra ?? {}).forEach(([k, v]) => fd.append(k, v));
     try {
-      const r = await fetch(`/api${endpoint}`, { method: "POST", body: fd });
+      const r = await fetch(`/api${endpoint}`, { method: "POST", body: fd, headers: adminHeaders() });
       const j = await r.json();
       if (!r.ok) throw Object.assign(new Error(typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail)), { status: r.status });
       setRes(j);

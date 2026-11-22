@@ -23,6 +23,26 @@ services:
       - key: AUTO_SEED          # los datos ya están en Supabase
         value: "0"
       - key: CORS_ORIGINS
-        value: http://localhost:3000
+        value: https://plataforma-mx.onrender.com
+      - key: ADMIN_TOKEN        # protege importaciones/actualizaciones; consúltelo en Render → Environment
+        generateValue: true
       - key: BANXICO_TOKEN      # opcional: token del SIE para «Actualizar todos los datos»
         sync: false
+
+  - type: web
+    name: plataforma-mx
+    runtime: node
+    plan: free
+    region: oregon
+    branch: plataforma-mx
+    rootDir: plataforma-mx/frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: BACKEND_URL        # URL pública del servicio plataforma-mx-api (ajústela si Render le asignó otra)
+        value: https://plataforma-mx-api.onrender.com

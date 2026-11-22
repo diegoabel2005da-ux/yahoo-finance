@@ -17,6 +17,7 @@ from ..engines import timeseries as tsx
 from ..services import connectors, importers
 from ..services.market_data import DataBlocked, get_instrument, load_ohlcv
 from .common import df_rows
+from .security import require_admin
 
 router = APIRouter(prefix="/api")
 TEMPLATES = Path(__file__).resolve().parents[2] / "data" / "templates"
@@ -61,7 +62,7 @@ def _wrap(fn):
 
 # ------------------------------------------------------------------ catálogo
 
-@router.post("/catalog/import")
+@router.post("/catalog/import", dependencies=[Depends(require_admin)])
 async def catalog_import(file: UploadFile = File(...), source: str = Form(...), db: Session = Depends(get_session)):
     content = await _read(file)
     return _wrap(lambda: importers.import_catalog(db, content, file.filename, source))
@@ -128,7 +129,7 @@ def available_analyses(ticker: str, series: str, db: Session = Depends(get_sessi
 
 # ------------------------------------------------------------------ precios
 
-@router.post("/prices/import")
+@router.post("/prices/import", dependencies=[Depends(require_admin)])
 async def prices_import(file: UploadFile = File(...), db: Session = Depends(get_session)):
     content = await _read(file)
     return _wrap(lambda: importers.import_prices(db, content, file.filename))
@@ -171,7 +172,7 @@ def discrepancies(only_open: bool = True, db: Session = Depends(get_session)):
                          "resolved": d.resolved, "note": d.resolution_note}) for d, i in db.execute(q)]
 
 
-@router.post("/discrepancies/{did}/resolve")
+@router.post("/discrepancies/{did}/resolve", dependencies=[Depends(require_admin)])
 def resolve_discrepancy(did: int, note: str = Form(...), db: Session = Depends(get_session)):
     """Resolver = se documenta la decisión. El registro secundario discrepante queda excluido
     de los cálculos (estado 'discrepancia'); nunca se sobrescribe la cifra oficial."""
@@ -194,13 +195,13 @@ def imports(db: Session = Depends(get_session)):
 
 # ------------------------------------------------------------------ tasas y curvas
 
-@router.post("/rates/import")
+@router.post("/rates/import", dependencies=[Depends(require_admin)])
 async def rates_import(file: UploadFile = File(...), db: Session = Depends(get_session)):
     content = await _read(file)
     return _wrap(lambda: importers.import_rates(db, content, file.filename))
 
 
-@router.post("/rates/banxico")
+@router.post("/rates/banxico", dependencies=[Depends(require_admin)])
 def rates_banxico(rate_code: str = Form(...), start: date = Form(...), end: date = Form(...),
                   db: Session = Depends(get_session)):
     res = connectors.fetch_banxico(rate_code, start, end)
@@ -235,7 +236,7 @@ def rate_series(code: str, start: date | None = None, end: date | None = None, d
                          "validation": r.validation}) for r in rows]
 
 
-@router.post("/curves/import")
+@router.post("/curves/import", dependencies=[Depends(require_admin)])
 async def curves_import(file: UploadFile = File(...), name: str = Form(...), curve_date: date = Form(...),
                         quote_kind: str = Form("zero_rate_pct"), compounding: str = Form("continua"),
                         day_count: str = Form("ACT/360"), interpolation: str = Form("log_linear_df"),
@@ -278,7 +279,7 @@ def curve_detail(curve_id: int, db: Session = Depends(get_session)):
 
 # ------------------------------------------------------------------ contratos y estados financieros
 
-@router.post("/futures/contracts/import")
+@router.post("/futures/contracts/import", dependencies=[Depends(require_admin)])
 async def fut_import(file: UploadFile = File(...), db: Session = Depends(get_session)):
     content = await _read(file)
     return _wrap(lambda: importers.import_futures_contracts(db, content, file.filename))
@@ -293,7 +294,7 @@ def fut_list(underlying: str | None = None, db: Session = Depends(get_session)):
             for f in db.scalars(q.order_by(FuturesContract.expiry))]
 
 
-@router.post("/options/contracts/import")
+@router.post("/options/contracts/import", dependencies=[Depends(require_admin)])
 async def opt_import(file: UploadFile = File(...), db: Session = Depends(get_session)):
     content = await _read(file)
     return _wrap(lambda: importers.import_option_contracts(db, content, file.filename))
@@ -308,7 +309,7 @@ def opt_list(underlying: str | None = None, db: Session = Depends(get_session)):
             for f in db.scalars(q.order_by(OptionContract.expiry, OptionContract.strike))]
 
 
-@router.post("/financials/import")
+@router.post("/financials/import", dependencies=[Depends(require_admin)])
 async def fin_import(file: UploadFile = File(...), db: Session = Depends(get_session)):
     content = await _read(file)
     return _wrap(lambda: importers.import_financials(db, content, file.filename))
@@ -357,7 +358,7 @@ def yahoo_status():
     return connectors.check_yahoo()
 
 
-@router.post("/yahoo/prices")
+@router.post("/yahoo/prices", dependencies=[Depends(require_admin)])
 def yahoo_prices(req: YahooReq, db: Session = Depends(get_session)):
     res = yahoo.fetch_prices(req.ticker.upper(), req.series.upper(), req.start, req.end, _yahoo_symbol(db, req), req.period)
     if res["status"] != "ok":
@@ -369,7 +370,7 @@ def yahoo_prices(req: YahooReq, db: Session = Depends(get_session)):
     return {"status": "ok", "symbol": res["symbol"], "currency": res["currency"], **imp}
 
 
-@router.post("/yahoo/financials")
+@router.post("/yahoo/financials", dependencies=[Depends(require_admin)])
 def yahoo_financials(req: YahooReq, db: Session = Depends(get_session)):
     res = yahoo.fetch_financials(req.ticker.upper(), req.series.upper(), req.quarterly, _yahoo_symbol(db, req))
     if res["status"] != "ok":
@@ -385,7 +386,7 @@ def yahoo_dividends(ticker: str, series: str, yahoo_symbol: str | None = None, d
     return yahoo.fetch_dividends(ticker.upper(), series.upper(), sym)
 
 
-@router.post("/yahoo/refresh")
+@router.post("/yahoo/refresh", dependencies=[Depends(require_admin)])
 def yahoo_refresh(db: Session = Depends(get_session)):
     """Actualiza precios de todas las emisoras vigentes desde su último dato almacenado."""
     from datetime import timedelta
@@ -417,7 +418,7 @@ class CetesCurveReq(BaseModel):
     interpolation: str = "log_linear_df"
 
 
-@router.post("/curves/banxico-cetes")
+@router.post("/curves/banxico-cetes", dependencies=[Depends(require_admin)])
 def curve_cetes(req: CetesCurveReq, db: Session = Depends(get_session)):
     """Curva cero desde los rendimientos de la subasta semanal de CETES (Banxico SIE).
 
@@ -453,14 +454,14 @@ def curve_cetes(req: CetesCurveReq, db: Session = Depends(get_session)):
 
 # ------------------------------------------------------------------ Boletines diarios de MexDer
 
-@router.post("/mexder/bulletin")
+@router.post("/mexder/bulletin", dependencies=[Depends(require_admin)])
 async def mexder_bulletin(file: UploadFile = File(...), db: Session = Depends(get_session)):
     from ..services import mexder_bulletins
     content = await _read(file)
     return _wrap(lambda: mexder_bulletins.import_bulletin(db, content, file.filename))
 
 
-@router.post("/mexder/aims")
+@router.post("/mexder/aims", dependencies=[Depends(require_admin)])
 async def mexder_aims(file: UploadFile = File(...), db: Session = Depends(get_session)):
     from ..services import mexder_margins
     content = await _read(file)
@@ -485,7 +486,7 @@ def _store_actions(db, inst, res) -> int:
     return n
 
 
-@router.post("/yahoo/actions")
+@router.post("/yahoo/actions", dependencies=[Depends(require_admin)])
 def yahoo_actions(req: YahooReq, db: Session = Depends(get_session)):
     inst = get_instrument(db, req.ticker, req.series)
     res = yahoo.fetch_actions(inst.ticker, inst.series, req.yahoo_symbol or inst.yahoo_symbol)
@@ -504,7 +505,7 @@ def actions_list(ticker: str, series: str, db: Session = Depends(get_session)):
                          "source": r.source}) for r in rows]
 
 
-@router.post("/yahoo/fundamentals-all")
+@router.post("/yahoo/fundamentals-all", dependencies=[Depends(require_admin)])
 def yahoo_fundamentals_all(db: Session = Depends(get_session)):
     """Estados financieros (anuales y trimestrales), dividendos y splits de todas las emisoras vigentes.
     Los índices no tienen estados financieros y se omiten."""
@@ -543,7 +544,7 @@ class GovCurveReq(BaseModel):
     interpolation: str = "log_linear_df"
 
 
-@router.post("/curves/banxico-gov")
+@router.post("/curves/banxico-gov", dependencies=[Depends(require_admin)])
 def curve_gov(req: GovCurveReq, db: Session = Depends(get_session)):
     """Curva cero gubernamental hasta 30 años: CETES 28-364 días + Bonos M 3-30 años (subastas de Banxico),
     con bootstrapping de tasas par. Rechaza la construcción si alguna subasta excede la antigüedad máxima."""

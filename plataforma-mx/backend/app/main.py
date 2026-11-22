@@ -5,10 +5,11 @@ import os
 import threading
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import routes_calc, routes_data
+from .api.security import require_admin
 from .core.db import init_db
 
 SEED_STATE = {"local": "pendiente", "online": "no ejecutada", "log": [], "started_at": None, "finished_at": None}
@@ -48,7 +49,11 @@ def build_app() -> FastAPI:
     def seed_status():
         return SEED_STATE
 
-    @app.post("/api/seed/refresh")
+    @app.get("/api/admin/status")
+    def admin_status():
+        return {"admin_token_required": bool(os.environ.get("ADMIN_TOKEN"))}
+
+    @app.post("/api/seed/refresh", dependencies=[Depends(require_admin)])
     def seed_refresh():
         if "en curso" in (SEED_STATE["local"], SEED_STATE["online"]):
             return {"status": "ya en curso", **SEED_STATE}
