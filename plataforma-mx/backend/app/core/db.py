@@ -10,7 +10,19 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./plataforma.db")
+def normalize_db_url(url: str) -> str:
+    """Acepta la cadena tal como la entrega Supabase/Render (postgres:// o postgresql://) y fija el
+    controlador psycopg 3 que usa la plataforma."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
+if os.environ.get("REQUIRE_DATABASE_URL") == "1" and not os.environ.get("DATABASE_URL"):
+    raise RuntimeError("DATABASE_URL no está definida: en producción la plataforma no arranca con una base "
+                       "SQLite temporal. Defina la cadena de conexión de Supabase (Session pooler).")
+DATABASE_URL = normalize_db_url(os.environ.get("DATABASE_URL", "sqlite:///./plataforma.db"))
 # Esquema de PostgreSQL para las tablas de la plataforma. En Supabase conviene uno distinto de «public»,
 # que se publica automáticamente por la API REST del proyecto. En SQLite no aplica.
 DB_SCHEMA = os.environ.get("DB_SCHEMA") or (None if DATABASE_URL.startswith("sqlite") else "plataforma")
@@ -295,8 +307,9 @@ SessionLocal = None
 
 def init_db(url: str | None = None):
     global _engine, SessionLocal
-    url = url or DATABASE_URL
-    kwargs = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {}
+    url = normalize_db_url(url or DATABASE_URL)
+    kwargs = ({"connect_args": {"check_same_thread": False}} if url.startswith("sqlite")
+              else {"pool_pre_ping": True, "pool_recycle": 300, "pool_size": 5, "max_overflow": 5})
     if url == "sqlite://":
         from sqlalchemy.pool import StaticPool
         kwargs["poolclass"] = StaticPool
