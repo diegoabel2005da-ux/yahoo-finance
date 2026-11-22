@@ -185,13 +185,14 @@ def fetch_financials(ticker: str, series: str, quarterly: bool = False, override
                 rows.append({"ticker": ticker, "statement": stmt, "period_type": "Q" if quarterly else "FY",
                              "period_end": pe.isoformat(), "basis": "consolidado", "currency": currency, "units": "unidades",
                              "item": key, "value": repr(val),
-                             "source": f"{SOURCE_TAG} · {symbol} · {label}", "retrieved_at": retrieved})
+                             "source": f"{SOURCE_TAG} · {symbol}", "retrieved_at": retrieved})
     if not rows:
         return {"status": "no_disponible", "symbol": symbol, "reason": "Yahoo no publicó estados financieros para el símbolo"}
     return {"status": "ok", "symbol": symbol, "currency": currency, "rows": rows,
             "missing_items": {st: [k for k in keys if (st, k) not in found] for st, keys in FIN_MAP.items()
                               if any((st, k) not in found for k in keys)},
             "notes": ["Base consolidada según Yahoo; capex y dividendos pagados se guardan como montos positivos.",
+                      "Correspondencia de partidas Yahoo → plataforma: ver FIN_MAP en app/services/yahoo.py.",
                       "La partida 'net_income' usa la utilidad atribuible a accionistas comunes cuando existe."]}
 
 
@@ -207,3 +208,19 @@ def fetch_dividends(ticker: str, series: str, override: str | None = None) -> di
     return {"status": "ok", "symbol": symbol, "source": f"{SOURCE_TAG} · {symbol}", "dividends": rows,
             "dps_ttm": ttm if rows else None, "retrieved_at": datetime.now(MX_TZ).isoformat(),
             "note": "Fecha = fecha ex-dividendo según Yahoo; montos por acción en la moneda de cotización."}
+
+
+def fetch_actions(ticker: str, series: str, override: str | None = None) -> dict:
+    """Dividendos (monto por acción, fecha ex) y splits (razón) publicados por Yahoo."""
+    symbol = yahoo_symbol(ticker, series, override)
+    try:
+        t = _yf().Ticker(symbol)
+        divs, splits = t.dividends, t.splits
+        currency = (t.fast_info.get("currency") or "MXN").upper()
+    except Exception as e:
+        return {"status": "no_disponible", "symbol": symbol, "reason": f"{type(e).__name__}: {str(e)[:200]}"}
+    rows = [{"kind": "dividendo", "ex_date": pd.Timestamp(i).date(), "value": float(v), "currency": currency}
+            for i, v in divs.items() if not pd.isna(v) and float(v) > 0]
+    rows += [{"kind": "split", "ex_date": pd.Timestamp(i).date(), "value": float(v), "currency": None}
+             for i, v in splits.items() if not pd.isna(v) and float(v) > 0]
+    return {"status": "ok", "symbol": symbol, "rows": rows, "source": f"{SOURCE_TAG} · {symbol}"}

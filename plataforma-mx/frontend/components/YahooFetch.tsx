@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorBox, Notice, Select, useRun } from "./ui";
 import { api } from "@/lib/api";
 
@@ -40,32 +40,51 @@ export function YahooPrices({ ticker, series, onDone }: { ticker: string; series
 
 export function YahooFinancials({ ticker, series, onDone }: { ticker: string; series: string; onDone?: () => void }) {
   const fin = useRun<any>();
-  const div = useRun<any>();
-  const go = (quarterly: boolean) => fin.run(async () => { const x = await api.post("/yahoo/financials", { ticker, series, quarterly }); onDone?.(); return x; });
+  const all = useRun<any>();
+  const [acts, setActs] = useState<any[]>([]);
+  const loadActs = () => api.get(`/actions/${ticker}/${encodeURIComponent(series)}`).then(setActs).catch(() => setActs([]));
+  useEffect(() => { loadActs(); }, [ticker, series]);
+  const go = (quarterly: boolean) => fin.run(async () => {
+    const x = await api.post("/yahoo/financials", { ticker, series, quarterly });
+    await api.post("/yahoo/actions", { ticker, series }).catch(() => null);
+    loadActs(); onDone?.(); return x;
+  });
+  const divs = acts.filter((a) => a.kind === "dividendo");
+  const splits = acts.filter((a) => a.kind === "split");
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <button className="btn" disabled={fin.busy} onClick={() => go(false)}>Importar anuales de Yahoo</button>
-        <button className="btn" disabled={fin.busy} onClick={() => go(true)}>Importar trimestrales de Yahoo</button>
-        <button className="btn-ghost" disabled={div.busy} onClick={() => div.run(() => api.get(`/yahoo/dividends/${ticker}/${encodeURIComponent(series)}`))}>Ver dividendos</button>
+        <button className="btn" disabled={fin.busy} onClick={() => go(false)}>Actualizar anuales de Yahoo</button>
+        <button className="btn" disabled={fin.busy} onClick={() => go(true)}>Actualizar trimestrales de Yahoo</button>
+        <button className="btn-ghost" disabled={all.busy} onClick={() => all.run(async () => { const x = await api.post("/yahoo/fundamentals-all", {}); loadActs(); onDone?.(); return x; })}>
+          {all.busy ? "Cargando todas (varios minutos)…" : "Cargar fundamentales de todas las emisoras"}
+        </button>
       </div>
-      <ErrorBox error={fin.error || div.error} />
+      <ErrorBox error={fin.error || all.error} />
       {fin.data && (fin.data.status === "ok" ? (
         <p className="text-xs">
           {fin.data.symbol}: {fin.data.statements} estados importados ({fin.data.currency}).
           {Object.keys(fin.data.missing_items ?? {}).length ? ` Partidas que Yahoo no publica (quedan como no disponibles): ${Object.entries(fin.data.missing_items).map(([k, v]: any) => `${k}: ${v.join(", ")}`).join(" · ")}.` : ""}
         </p>
       ) : <Notice tone="warn">No disponible: {fin.data.reason}</Notice>)}
-      {div.data && (div.data.status === "ok" ? (
-        <div className="text-xs">
-          <p>Dividendo por acción últimos 12 meses: <b>{div.data.dps_ttm ?? "—"}</b> · {div.data.note}</p>
-          <div className="mt-1 max-h-40 overflow-auto">
-            <table className="tbl"><thead><tr><th>Fecha ex</th><th>Monto</th></tr></thead>
-              <tbody>{div.data.dividends.slice(-20).reverse().map((d: any) => <tr key={d.ex_date}><td>{d.ex_date}</td><td>{d.amount}</td></tr>)}</tbody>
-            </table>
-          </div>
+      {all.data && <p className="text-xs">{all.data.length} emisoras procesadas. {all.data.filter((x: any) => typeof x.anual === "string").map((x: any) => x.ticker).join(", ") ? `Sin estados en Yahoo: ${all.data.filter((x: any) => typeof x.anual === "string").map((x: any) => x.ticker).join(", ")}.` : ""}</p>}
+      <div className="grid gap-3 md:grid-cols-2">
+        <div>
+          <h4 className="text-xs font-semibold uppercase text-slate-500">Dividendos ({divs.length})</h4>
+          {divs.length ? (
+            <div className="max-h-48 overflow-auto"><table className="tbl"><thead><tr><th>Fecha ex</th><th>Monto por acción</th><th>Moneda</th></tr></thead>
+              <tbody>{divs.slice(0, 40).map((d) => <tr key={d.ex_date}><td>{d.ex_date}</td><td>{d.value}</td><td>{d.currency}</td></tr>)}</tbody></table></div>
+          ) : <p className="text-xs text-slate-500">Sin dividendos registrados.</p>}
         </div>
-      ) : <Notice tone="warn">No disponible: {div.data.reason}</Notice>)}
+        <div>
+          <h4 className="text-xs font-semibold uppercase text-slate-500">Splits ({splits.length})</h4>
+          {splits.length ? (
+            <table className="tbl"><thead><tr><th>Fecha</th><th>Razón</th></tr></thead>
+              <tbody>{splits.map((d) => <tr key={d.ex_date}><td>{d.ex_date}</td><td>{d.value} por 1</td></tr>)}</tbody></table>
+          ) : <p className="text-xs text-slate-500">Sin splits registrados.</p>}
+          {acts[0] && <p className="mt-1 text-[11px] text-slate-500">Fuente: {acts[0].source}</p>}
+        </div>
+      </div>
     </div>
   );
 }

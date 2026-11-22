@@ -12,7 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.audit import ENGINE_VERSION, to_jsonable
-from ..core.db import AuditRecord, Exposure, FinancialStatement, FuturesContract, Study, get_session
+from ..core.db import (AuditRecord, CorporateAction, Exposure, FinancialStatement, FuturesContract, Instrument,
+                       Study, get_session)
 from ..core.provenance import DataOrigin, PriceType
 from ..engines import fundamental as fa
 from ..engines import futures as fu
@@ -225,12 +226,48 @@ def ratios(req: RatiosReq, db: Session = Depends(get_session)):
         for k, avg in (("total_assets", "avg_total_assets"), ("total_equity", "avg_equity")):
             if k in items and k in prev_items:
                 items[avg] = (items[k] + prev_items[k]) / 2
-    res = fa.compute_ratios(items, req.price, req.shares, req.dps_ttm, req.tax_rate)
-    res["period_end"] = pe
-    res["items"] = items
+    price, shares, dps, notes = req.price, req.shares, req.dps_ttm, []
+    stmt_ccy = next((s.currency for s in stmts if s.period_end == pe), None)
+    inst = db.scalar(select(Instrument).where(Instrument.ticker == req.ticker.upper()))
     if req.price is not None:
         srcs.append({"dato": "precio", "fuente": req.price_source or "indicado por el usuario", "fecha": "",
                      "origen": "observado" if req.price_source else "supuesto", "estado": ""})
+    elif inst is not None and req.period_type.upper() == "FY":
+        try:
+            pdf, pmeta = load_ohlcv(db, inst, PriceType.OFFICIAL_CLOSE.value)
+            if not pdf.empty:
+                price = float(pdf["close"].iloc[-1])
+                last_px_date = pdf.index.max().date()
+                srcs.append({"dato": "precio (último cierre)", "fuente": ", ".join(pmeta["sources"]),
+                             "fecha": str(last_px_date), "origen": "observado", "estado": str(pmeta["validation_counts"])})
+                if dps is None:
+                    divs = db.scalars(select(CorporateAction).where(
+                        CorporateAction.ticker == inst.ticker, CorporateAction.series == inst.series,
+                        CorporateAction.kind == "dividendo", CorporateAction.ex_date > last_px_date - timedelta(days=365),
+                        CorporateAction.ex_date <= last_px_date))
+                    divs = list(divs)
+                    if divs:
+                        dps = sum(float(d.value) for d in divs)
+                        srcs.append({"dato": f"dividendos 12 meses ({len(divs)} pagos)", "fuente": divs[0].source,
+                                     "fecha": str(last_px_date), "origen": "observado", "estado": ""})
+        except DataBlocked as e:
+            notes.append(f"Precio no usado: {e}")
+    elif req.period_type.upper() == "Q":
+        notes.append("Periodo trimestral: márgenes y rentabilidades son del trimestre (no anualizados); los múltiplos "
+                     "de mercado se calculan con cifras anuales.")
+    if shares is None and items.get("shares_outstanding"):
+        shares = float(items["shares_outstanding"])
+        srcs.append({"dato": "acciones en circulación (balance)", "fuente": "estado de posición financiera del periodo",
+                     "fecha": str(pe), "origen": "observado", "estado": ""})
+    if price is not None and inst is not None and stmt_ccy and stmt_ccy != inst.currency:
+        notes.append(f"Estados financieros en {stmt_ccy} y precio en {inst.currency}: no se calculan múltiplos de "
+                     "mercado ni rendimiento por dividendo para no mezclar monedas.")
+        price, dps = None, None
+    res = fa.compute_ratios(items, price, shares, dps, req.tax_rate)
+    res["period_end"] = pe
+    res["items"] = items
+    res["inputs_used"] = {"price": price, "shares": shares, "dps_ttm": dps, "statement_currency": stmt_ccy}
+    res["notes"] = notes
     return respond(db, "ratios", req.model_dump(), {}, [v[0] for v in fa.RATIO_DEFS.values()], res, srcs)
 
 

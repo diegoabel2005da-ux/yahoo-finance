@@ -62,7 +62,7 @@ function View({ ticker, series }: { ticker: string; series: string }) {
         )}
       </Card>
       <Card title="Ratios financieros y de mercado" className="mt-4">
-        <Notice>Los múltiplos de mercado requieren precio y acciones en circulación con fuente. Las razones sin insumos completos se muestran como no calculables, nunca se estiman.</Notice>
+        <Notice>Si deja vacíos precio, acciones o dividendo, se usan los datos cargados: último cierre, acciones del balance y dividendos de los últimos 12 meses, cada uno con su fuente. Si los estados están en otra moneda que el precio, no se calculan múltiplos de mercado. Las razones sin insumos completos se muestran como no calculables, nunca se estiman.</Notice>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
           <Num label="Precio" value={mk.price} onChange={(v) => setMk({ ...mk, price: v })} />
           <Text label="Fuente del precio" value={mk.price_source} onChange={(v) => setMk({ ...mk, price_source: v })} />
@@ -76,7 +76,9 @@ function View({ ticker, series }: { ticker: string; series: string }) {
         <ErrorBox error={error} />
         {data && (
           <>
-            <p className="mt-2 text-xs">Periodo: {data.result.period_end} · Capitalización: {num(data.result.market_cap)} · VE: {num(data.result.enterprise_value)} · Deuda neta: {num(data.result.net_debt)}</p>
+            {data.result.notes?.map((n: string) => <Notice key={n} tone="warn">{n}</Notice>)}
+            <p className="mt-2 text-xs">Insumos usados: precio {num(data.result.inputs_used?.price)} · acciones {num(data.result.inputs_used?.shares, 0)} · dividendo 12m {num(data.result.inputs_used?.dps_ttm, 4)} · moneda de los estados {data.result.inputs_used?.statement_currency ?? "—"}</p>
+            <p className="mt-1 text-xs">Periodo: {data.result.period_end} · Capitalización: {num(data.result.market_cap)} · VE: {num(data.result.enterprise_value)} · Deuda neta: {num(data.result.net_debt)}</p>
             <Table rows={Object.entries(data.result.ratios).map(([k, v]: any) => ({ razón: k, valor: v.value === null ? "no calculable" : num(v.value, 4), fórmula: v.formula, faltantes: v.missing.join(", "), interpretación: v.explanation }))} />
             <AuditInfo calc={data} />
           </>

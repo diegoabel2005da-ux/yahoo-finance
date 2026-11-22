@@ -207,3 +207,26 @@ def test_audit_serializes_decimals():
     from app.core.audit import build_audit
     a = build_audit("x", {"aim": Decimal("475.1845")}, {}, [], {"v": Decimal("1.5")})
     assert a["result"]["v"] == 1.5 and a["inputs"]["aim"] == 475.1845
+
+
+def test_ratios_auto_inputs_and_currency_guard(client):
+    """Ratios con precio, acciones y dividendos tomados de lo cargado; sin múltiplos si las monedas difieren."""
+    rows = [("income", "revenue", 1000), ("income", "net_income", 100), ("income", "ebit", 150),
+            ("balance", "total_equity", 500), ("balance", "total_assets", 1200), ("balance", "shares_outstanding", 10)]
+    def fin(ccy):
+        return csv(pd.DataFrame([dict(ticker="FICTA", statement=s, period_type="FY", period_end="2025-12-31",
+                                      basis="consolidado", currency=ccy, units="unidades", item=i, value=v,
+                                      source=f"PRUEBA-{ccy}", retrieved_at="2026-11-21T10:00:00-06:00") for s, i, v in rows]))
+    assert client.post("/api/financials/import", files={"file": ("f.csv", fin("MXN"))}).status_code == 200
+    r = client.post("/api/ratios", json={"ticker": "FICTA", "period_type": "FY"}).json()["result"]
+    assert r["inputs_used"]["shares"] == 10 and r["inputs_used"]["price"] is not None
+    assert r["ratios"]["pe"]["value"] == pytest.approx(r["inputs_used"]["price"] / 10)
+    import sqlite3  # noqa: F401
+    from app.core import db as dbm
+    with dbm.SessionLocal() as s:
+        for st in s.query(dbm.FinancialStatement).filter_by(ticker="FICTA").all():
+            st.currency = "USD"
+        s.commit()
+    r = client.post("/api/ratios", json={"ticker": "FICTA", "period_type": "FY"}).json()["result"]
+    assert r["ratios"]["pe"]["value"] is None and any("no se calculan múltiplos" in n for n in r["notes"])
+    assert r["ratios"]["margen_neto"]["value"] == pytest.approx(0.1)

@@ -212,6 +212,24 @@ class OptionContract(Base):
     reviewed_on: Mapped[date] = mapped_column(Date)
 
 
+class CorporateAction(Base):
+    """Dividendos y splits por emisora y serie, con su fuente."""
+
+    __tablename__ = "corporate_actions"
+    __table_args__ = (UniqueConstraint("ticker", "series", "kind", "ex_date", "source_key", name="uq_corp_action"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(20), index=True)
+    series: Mapped[str] = mapped_column(String(10))
+    kind: Mapped[str] = mapped_column(String(10))  # dividendo / split
+    ex_date: Mapped[date] = mapped_column(Date, index=True)
+    value: Mapped[float] = mapped_column(Numeric(24, 8))  # monto por acción, o razón del split (p. ej. 2.0 = 2 por 1)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    source: Mapped[str] = mapped_column(String(500))
+    source_key: Mapped[str] = mapped_column(String(60))
+    origin: Mapped[str] = mapped_column(String(40), default="observado_fuente_oficial")
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ContractQuote(Base):
     """Historial de precios de liquidación oficiales por contrato listado (boletines de MexDer)."""
 

@@ -465,3 +465,71 @@ async def mexder_aims(file: UploadFile = File(...), db: Session = Depends(get_se
     from ..services import mexder_margins
     content = await _read(file)
     return _wrap(lambda: mexder_margins.import_aims(db, content, file.filename))
+
+
+# ------------------------------------------------------------------ Fundamentales en lote (Yahoo)
+
+def _store_actions(db, inst, res) -> int:
+    from ..core.db import CorporateAction
+    n = 0
+    for r in res["rows"]:
+        exists = db.scalar(select(CorporateAction).where(
+            CorporateAction.ticker == inst.ticker, CorporateAction.series == inst.series, CorporateAction.kind == r["kind"],
+            CorporateAction.ex_date == r["ex_date"], CorporateAction.source_key == "yahoo"))
+        if exists:
+            continue
+        db.add(CorporateAction(ticker=inst.ticker, series=inst.series, kind=r["kind"], ex_date=r["ex_date"],
+                               value=r["value"], currency=r["currency"], source=res["source"], source_key="yahoo"))
+        n += 1
+    db.commit()
+    return n
+
+
+@router.post("/yahoo/actions")
+def yahoo_actions(req: YahooReq, db: Session = Depends(get_session)):
+    inst = get_instrument(db, req.ticker, req.series)
+    res = yahoo.fetch_actions(inst.ticker, inst.series, req.yahoo_symbol or inst.yahoo_symbol)
+    if res["status"] != "ok":
+        return res
+    return {"status": "ok", "symbol": res["symbol"], "added": _store_actions(db, inst, res), "total": len(res["rows"])}
+
+
+@router.get("/actions/{ticker}/{series}")
+def actions_list(ticker: str, series: str, db: Session = Depends(get_session)):
+    from ..core.db import CorporateAction
+    rows = db.scalars(select(CorporateAction).where(CorporateAction.ticker == ticker.upper(),
+                                                    CorporateAction.series == series.upper())
+                      .order_by(CorporateAction.ex_date.desc()))
+    return [to_jsonable({"kind": r.kind, "ex_date": r.ex_date, "value": r.value, "currency": r.currency,
+                         "source": r.source}) for r in rows]
+
+
+@router.post("/yahoo/fundamentals-all")
+def yahoo_fundamentals_all(db: Session = Depends(get_session)):
+    """Estados financieros (anuales y trimestrales), dividendos y splits de todas las emisoras vigentes.
+    Los índices no tienen estados financieros y se omiten."""
+    out = []
+    for inst in db.scalars(select(Instrument).where(Instrument.active.is_(True)).order_by(Instrument.ticker)):
+        row = {"ticker": inst.ticker, "series": inst.series}
+        if (inst.sector or "").startswith("Índice"):
+            row["skipped"] = "índice: sin estados financieros"
+            out.append(row)
+            continue
+        for q in (False, True):
+            res = yahoo.fetch_financials(inst.ticker, inst.series, q, inst.yahoo_symbol)
+            key = "trimestral" if q else "anual"
+            if res["status"] != "ok":
+                row[key] = f"no disponible: {res['reason']}"
+                continue
+            imp = importers.import_financials(db, yahoo.rows_to_csv(res["rows"]), f"yahoo_fin_{res['symbol']}.csv")
+            row[key] = {"estados": imp["statements"], "moneda": res["currency"], "rechazados": len(imp["rejected"]),
+                        "partidas_no_publicadas": res["missing_items"]}
+        act = yahoo.fetch_actions(inst.ticker, inst.series, inst.yahoo_symbol)
+        if act["status"] == "ok":
+            row["eventos"] = {"nuevos": _store_actions(db, inst, act),
+                              "dividendos": sum(r["kind"] == "dividendo" for r in act["rows"]),
+                              "splits": sum(r["kind"] == "split" for r in act["rows"])}
+        else:
+            row["eventos"] = f"no disponible: {act['reason']}"
+        out.append(row)
+    return out

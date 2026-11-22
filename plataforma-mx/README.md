@@ -25,7 +25,7 @@ backend/   Python · FastAPI · SQLAlchemy (PostgreSQL vía DATABASE_URL; SQLite
                    IA explicativa, reportes Excel/PDF
   app/api/         rutas REST (cada cálculo devuelve un audit_id reproducible)
   data/templates/  plantillas CSV de importación (sólo encabezados, sin datos)
-  tests/           76 pruebas: valores de referencia independientes, no arbitraje, integración de la API
+  tests/           77 pruebas: valores de referencia independientes, no arbitraje, integración de la API
 frontend/  Next.js 15 · React 19 · TypeScript · Tailwind · Plotly (16 módulos del menú)
 docs/      metodología financiera y técnica
 ```
@@ -104,6 +104,8 @@ Por decisión del usuario (uso personal y de investigación, términos de Yahoo 
 - Los precios se guardan a 2 decimales (precisión de puja de la BMV), redondeados desde los flotantes de Yahoo.
 - `Close` de Yahoo está ajustado por splits; `Adj Close` (dividendos) se guarda como cierre ajustado. Ninguno equivale necesariamente al precio de la subasta de cierre de la BMV.
 - Endpoints: `POST /api/yahoo/prices`, `POST /api/yahoo/refresh` (todas las vigentes, incremental), `POST /api/yahoo/financials`, `GET /api/yahoo/dividends/{ticker}/{serie}`.
+- Fundamentales en lote: `POST /api/yahoo/fundamentals-all` carga, para todas las emisoras vigentes, estados financieros anuales y trimestrales, dividendos y splits (tabla `corporate_actions`). Con la carga del 22-nov-2026 quedaron 433 estados anuales, 505 trimestrales, 1,224 dividendos y 47 splits. NAFTRAC (un ETF) no tiene estados financieros, y FRAGUA y LACOMER no tienen trimestrales en Yahoo.
+- Ratios: si no se indican, se toman el último cierre, las acciones en circulación del balance y los dividendos de los últimos 12 meses, todos con su fuente. Varias emisoras reportan en dólares: CEMEX, GMEXICO, GRUMA, PE&OLES, ORBIA, VESTA, VOLAR, GISSA y los valores globales. Para ellas no se calculan múltiplos de mercado ni rendimiento por dividendo, porque mezclarían monedas.
 - Red: el entorno necesita acceso a `query1.finance.yahoo.com`, `query2.finance.yahoo.com`, `fc.yahoo.com` y `finance.yahoo.com`.
 
 ### Banxico (SIE)
