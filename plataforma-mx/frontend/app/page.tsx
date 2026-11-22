@@ -10,12 +10,20 @@ export default function Home() {
   const [cat, setCat] = useState<any>(null);
   const [disc, setDisc] = useState<any[]>([]);
   const [audit, setAudit] = useState<any[]>([]);
+  const [seed, setSeed] = useState<any>(null);
+  const loadSeed = () => api.get("/seed/status").then(setSeed).catch(() => {});
   useEffect(() => {
     api.get("/sources/status").then(setSources).catch(() => setSources([]));
     api.get("/catalog").then(setCat).catch(() => {});
     api.get("/discrepancies").then(setDisc).catch(() => {});
     api.get("/audit", { limit: 10 }).then(setAudit).catch(() => {});
+    loadSeed();
   }, []);
+  useEffect(() => {
+    if (!seed || !["en curso", "pendiente"].some((x) => seed.local === x || seed.online === x)) return;
+    const t = setTimeout(loadSeed, 4000);
+    return () => clearTimeout(t);
+  }, [seed]);
   return (
     <>
       <PageHeader title="Inicio" subtitle="Primero comprender y cuantificar el riesgo; después construir y comparar las alternativas de cobertura. Todas las cifras muestran su fuente, fecha y estado de validación." />
@@ -44,6 +52,14 @@ export default function Home() {
           </ol>
         </Card>
       </div>
+      <Card title="Datos de la plataforma" className="mt-4" actions={
+        <button className="btn" disabled={seed?.online === "en curso"} onClick={() => api.post("/seed/refresh", {}).then(loadSeed)}>
+          {seed?.online === "en curso" ? "Actualizando…" : "Actualizar todos los datos (en línea)"}
+        </button>}>
+        <p className="text-sm">Carga local del repositorio (catálogo, boletines de MexDer, AIM): <b>{seed?.local ?? "—"}</b> · Actualización en línea (Yahoo, Banxico, curva): <b>{seed?.online ?? "—"}</b></p>
+        <p className="text-xs text-slate-500">Al iniciar con una base vacía se cargan automáticamente los datos semilla del repositorio. La actualización en línea descarga precios, estados financieros, dividendos y splits de Yahoo, series de Banxico y la curva gubernamental (varios minutos). Mientras no se suba un archivo más reciente, las AIM de octubre de 2026 son la referencia vigente y se muestran con su periodo.</p>
+        {seed?.log?.length > 0 && <pre className="mt-2 max-h-40 overflow-auto rounded bg-slate-100 p-2 text-[11px] dark:bg-navy-950">{seed.log.slice(-15).join("\n")}</pre>}
+      </Card>
       <Card title="Fuentes oficiales — conectividad" className="mt-4">
         {sources === null ? (
           <p className="text-sm text-slate-500">Verificando…</p>

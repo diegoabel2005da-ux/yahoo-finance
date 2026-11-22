@@ -25,7 +25,7 @@ backend/   Python · FastAPI · SQLAlchemy (PostgreSQL vía DATABASE_URL; SQLite
                    IA explicativa, reportes Excel/PDF
   app/api/         rutas REST (cada cálculo devuelve un audit_id reproducible)
   data/templates/  plantillas CSV de importación (sólo encabezados, sin datos)
-  tests/           79 pruebas: valores de referencia independientes, no arbitraje, integración de la API
+  tests/           80 pruebas: valores de referencia independientes, no arbitraje, integración de la API
 frontend/  Next.js 15 · React 19 · TypeScript · Tailwind · Plotly (16 módulos del menú)
 docs/      metodología financiera y técnica
 ```
@@ -64,6 +64,23 @@ Pruebas:
 ```bash
 cd backend && python -m pytest -q
 ```
+
+## Datos semilla y actualización
+
+El repositorio incluye los datos base para que la plataforma funcione en cualquier instalación:
+
+| Archivo | Contenido |
+|---|---|
+| `backend/data/catalogs/mexder_catalogo_2026-11-21.csv` | Catálogo de subyacentes de MexDer (futuros y opciones) |
+| `backend/data/seed/mexder/2026-11-20_Boletin_de_Futuros_Basico.pdf` | Boletín de futuros del 20-nov-2026 (512 series) |
+| `backend/data/seed/mexder/2026-11-20_Boletin_de_Opciones_Basico.pdf` | Boletín de opciones del 20-nov-2026 (6,336 series) |
+| `backend/data/seed/mexder/AIMS_Unitarias_Octubre26.xls` | AIM unitarias, periodo octubre 2026 |
+
+- **Carga automática:** al arrancar el backend con una base vacía, se cargan en segundo plano y sin red el catálogo, los boletines y las AIM (unos 8 segundos). Se desactiva con `AUTO_SEED=0`. Manualmente: `python -m app.seed`.
+- **Actualización en línea:** el botón «Actualizar todos los datos» de Inicio, o `python -m app.seed --online`, descarga precios, estados financieros, dividendos y splits de Yahoo, las series de Banxico y la curva gubernamental.
+- **AIM vigentes:** mientras no se suba un archivo más reciente, las AIM de octubre de 2026 son la referencia. Siempre se muestran con su periodo y nunca como AIM de otro mes. Para actualizar, basta con poner el nuevo `AIMS_Unitarias_<Mes><Año>.xls` en `data/seed/mexder/` o subirlo desde la interfaz; se usa el de periodo más reciente.
+- **Escala de strikes sin precios:** si al cargar no hay precios del subyacente para la paridad put-call, la escala se resuelve con los strikes del archivo de AIM, que vienen en escala real. Con los datos del 20-nov-2026, ambos métodos dan la misma escala en los 30 subyacentes.
+- **Boletines nuevos:** se agregan con el botón de Futuros u Opciones, o dejando el PDF en `data/seed/mexder/` con la fecha al inicio del nombre.
 
 ## Veracidad de los datos
 

@@ -66,3 +66,22 @@ def test_single_digit_day_and_tief_series_month():
     rows = {r["symbol"]: r for r in mb.parse_futures(txt)["rows"]}
     assert "TIEF NV26" in rows                      # vence 1-dic-2026 → serie de noviembre
     assert rows["TIEF NV26"]["expiry"] == date(2026, 12, 1) and rows["TIEF NV26"]["settlement"] == 6.33
+
+
+def test_scale_resolution_from_aim_strikes():
+    """Sin precios, la escala se resuelve con los strikes (en escala real) del archivo de AIM."""
+    from datetime import date as d
+    from app.core import db as dbm
+    from app.services.mexder_margins import resolve_unverified_scales
+    dbm.init_db("sqlite://")
+    with dbm.SessionLocal() as s:
+        for k in (4.8, 5.0, 5.2):
+            s.add(dbm.OptionContract(symbol=f"ASURB CALL {k}", underlying_ticker="ASUR", option_type="call", strike=k,
+                                     strike_published=k, strike_scale=None, expiry=d(2026, 12, 18), multiplier=100,
+                                     style="americana", settlement="fisica", currency="MXN", source="t", reviewed_on=d(2026, 11, 20)))
+        s.commit()
+        aims = {("AS", "DC26", "C", 480.0): {}, ("AS", "DC26", "C", 500.0): {}, ("AS", "DC26", "C", 460.0): {}}
+        out = resolve_unverified_scales(s, aims, {"AS": "ASUR"}, "AIMS_Unitarias_Octubre26.xls")
+        s.commit()
+        assert "× 100" in out["ASUR"]
+        assert sorted(float(c.strike) for c in s.query(dbm.OptionContract).all()) == [480.0, 500.0, 520.0]

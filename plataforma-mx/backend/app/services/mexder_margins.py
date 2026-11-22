@@ -120,6 +120,7 @@ def import_aims(db, content: bytes, filename: str) -> dict:
         for r in range(1, sh.nrows):
             cl, ser, cp, k, side, val = [sh.cell_value(r, c) for c in range(6)]
             aims[(str(cl).strip(), str(ser).strip(), str(cp).strip().upper(), float(k))][str(side).strip().lower()] = float(val)
+        report["strike_scales_from_aims"] = resolve_unverified_scales(db, aims, opt_map, filename)
         index = defaultdict(list)
         for c in db.scalars(select(OptionContract)):
             index[(c.underlying_ticker, c.expiry.year, c.expiry.month, c.option_type)].append(c)
@@ -148,3 +149,54 @@ def import_aims(db, content: bytes, filename: str) -> dict:
                            "status": "no cargado: la plataforma aún no modela swaps de TIIE listados"}
     db.commit()
     return report
+
+
+def resolve_unverified_scales(db, aims: dict, opt_map: dict, filename: str) -> dict:
+    """Para series de opciones cuya escala de strike no pudo verificarse por paridad (p. ej. sin precios del
+    subyacente), usa como segunda fuente independiente el archivo de AIM, que publica los strikes en su escala
+    real: se elige ×1 o ×100 según cuál produzca coincidencia con al menos el 50 % de los strikes del archivo."""
+    from sqlalchemy import select
+
+    from ..core.db import OptionContract
+
+    aim_strikes = defaultdict(set)
+    for (cl, ser, cp, k) in aims:
+        tk = opt_map.get(cl)
+        if tk:
+            y, mo = _series_ym(ser)
+            aim_strikes[(tk, y, mo)].add(round(k, 6))
+    pending = defaultdict(list)
+    for c in db.scalars(select(OptionContract).where(OptionContract.strike_scale.is_(None))):
+        pending[c.underlying_ticker].append(c)
+    out = {}
+    for tk, contracts in pending.items():
+        score = {}
+        for scale in (1.0, 100.0):
+            hits = total = 0
+            for c in contracts:
+                ref = aim_strikes.get((tk, c.expiry.year, c.expiry.month))
+                if not ref:
+                    continue
+                total += 1
+                hits += round(float(c.strike_published) * scale, 6) in ref
+            score[scale] = (hits, total)
+        # Decisión: ≥ 50 % de coincidencia, o ≥ 25 % cuando la escala alternativa no coincide en ninguna serie
+        # (los strikes listados se recorren entre meses, así que la coincidencia parcial es normal).
+        best = None
+        for scale, other in ((1.0, 100.0), (100.0, 1.0)):
+            hits, total = score[scale]
+            if total and (hits / total >= 0.5 or (hits / total >= 0.25 and score[other][0] == 0)):
+                if best is None or hits > best[1]:
+                    best = (scale, hits, total)
+        if best is None:
+            out[tk] = "sin coincidencias suficientes: la escala sigue sin verificar"
+            continue
+        scale, hits, total = best
+        ev = f"Strike = publicado × {scale:g}. Coincidencia con strikes del archivo de AIM {filename}: {hits}/{total} series"
+        for c in contracts:
+            c.strike_scale, c.strike = scale, round(float(c.strike_published) * scale, 6)
+            c.notes = " · ".join(n for n in (c.notes or "").split(" · ") if not n.startswith("ESCALA NO VERIFICADA")) \
+                + (" · " if c.notes else "") + ev
+        out[tk] = ev
+    db.flush()
+    return out
