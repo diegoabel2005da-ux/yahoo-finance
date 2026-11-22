@@ -3,6 +3,13 @@ from __future__ import annotations
 
 import os
 from datetime import date, datetime, timezone
+from pathlib import Path
+
+try:  # archivo backend/.env con DATABASE_URL, BANXICO_TOKEN, etc. (nunca se sube a git)
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+except ImportError:  # pragma: no cover
+    pass
 
 from sqlalchemy import (
     JSON, Boolean, Date, DateTime, ForeignKey, Integer, MetaData, Numeric, String, Text,
@@ -22,7 +29,7 @@ def normalize_db_url(url: str) -> str:
 if os.environ.get("REQUIRE_DATABASE_URL") == "1" and not os.environ.get("DATABASE_URL"):
     raise RuntimeError("DATABASE_URL no está definida: en producción la plataforma no arranca con una base "
                        "SQLite temporal. Defina la cadena de conexión de Supabase (Session pooler).")
-DATABASE_URL = normalize_db_url(os.environ.get("DATABASE_URL", "sqlite:///./plataforma.db"))
+DATABASE_URL = normalize_db_url(os.environ.get("DATABASE_URL") or "sqlite:///./plataforma.db")
 # Esquema de PostgreSQL para las tablas de la plataforma. En Supabase conviene uno distinto de «public»,
 # que se publica automáticamente por la API REST del proyecto. En SQLite no aplica.
 DB_SCHEMA = os.environ.get("DB_SCHEMA") or (None if DATABASE_URL.startswith("sqlite") else "plataforma")

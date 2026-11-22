@@ -17,3 +17,4 @@ pytest>=8.0
 yfinance>=1.8
 pdfplumber>=0.11
 xlrd>=2.0
+python-dotenv>=1.0

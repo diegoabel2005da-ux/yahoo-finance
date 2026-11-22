@@ -34,6 +34,9 @@ Toda la lógica financiera vive en el backend: el frontend sólo muestra resulta
 
 ## Puesta en marcha
 
+**Guía paso a paso para tu computadora (con Supabase): [INICIO_RAPIDO.md](INICIO_RAPIDO.md).** Incluye `iniciar.bat` (Windows) e `iniciar.sh` (Mac/Linux), que instalan y arrancan todo con un comando. La configuración va en `backend/.env` (ver `backend/.env.example`).
+
+
 ```bash
 cd backend && pip install -r requirements.txt
 ```
