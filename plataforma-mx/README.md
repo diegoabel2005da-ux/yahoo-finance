@@ -96,6 +96,10 @@ La plataforma funciona sobre PostgreSQL sin cambios: la carga semilla, Yahoo, Ba
 
 **MCP de Supabase:** `.mcp.json` (raíz del repo) registra el servidor MCP del proyecto `tlwqadsvlnrrhakuxojq`. Claude Code pide aprobarlo y autenticarse con Supabase la primera vez. Permite consultar y administrar la base por HTTPS desde sesiones de Claude.
 
+**Datos ya cargados en Supabase (22-nov-2026):** el proyecto `tlwqadsvlnrrhakuxojq` contiene en el esquema `plataforma` las 302,562 filas de la base de trabajo: 38 instrumentos, 282,744 observaciones de precio, 3,801 de tasas de Banxico, 938 estados financieros, 1,271 dividendos y splits, 512 futuros, 6,336 opciones, 6,848 precios de liquidación y 3 curvas. Se verificaron los conteos y valores de muestra con el MCP. Las tablas tienen RLS sin políticas y los roles `anon`/`authenticated` no tienen permisos, así que no son accesibles por la API pública.
+
+**Resincronizar desde una base local:** `scripts/sync_supabase.py` sube una base SQLite por HTTPS mediante una función temporal `public.plataforma_load` (sólo `service_role`), con la llave secreta en el encabezado `apikey`. La función se crea antes de la carga y se borra al terminar. Las migraciones aplicadas fueron `plataforma_schema`, `plataforma_temp_loader` y `plataforma_post_load`, que ajusta las secuencias y borra la función.
+
 **Nota sobre entornos en la nube de Claude Code:** esos contenedores sólo salen a internet por HTTPS mediante un proxy, así que el backend no puede abrir ahí una conexión directa de PostgreSQL (puerto 5432) hacia Supabase. En tu computadora o en un servidor (Render, Railway, Fly.io, una VM…) funciona con la `DATABASE_URL` anterior.
 
 ## Veracidad de los datos
