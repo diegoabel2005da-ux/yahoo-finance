@@ -42,7 +42,7 @@ export default function Futuros() {
       <Card title={`Contratos listados importados ${asset ? `— ${asset.ticker}` : ""}`}>
         {contracts.length ? (
           <>
-          <Table rows={contracts.map((x) => ({ símbolo: x.symbol, vencimiento: x.expiry, "precio de liquidación": x.last_settlement ?? "—", "liq. anterior": x.previous_settlement ?? "—", "interés abierto": x.open_interest ?? "—", fecha: x.settlement_date ?? "—", multiplicador: x.multiplier, puja: x.tick_size ?? "no publicada", "valor puja": x.tick_value ?? "—", "tipo de liquidación": x.settlement, AIM: x.initial_margin ?? "no importada", nota: x.notes ?? "" }))} />
+          <Table rows={contracts.map((x) => ({ símbolo: x.symbol, vencimiento: x.expiry, "precio de liquidación": x.last_settlement ?? "—", "liq. anterior": x.previous_settlement ?? "—", "interés abierto": x.open_interest ?? "—", fecha: x.settlement_date ?? "—", multiplicador: x.multiplier, puja: x.tick_size ?? "no publicada", "valor puja": x.tick_value ?? "—", "tipo de liquidación": x.settlement, "AIM larga": x.margin_long ?? "no importada", "AIM corta": x.margin_short ?? "no importada", "AIM periodo": x.margin_as_of ?? "—", nota: x.notes ?? "" }))} />
           <p className="mt-1 text-[11px] text-slate-500">Fuente: {contracts[0]?.source}</p>
           </>
         ) : (
@@ -50,6 +50,8 @@ export default function Futuros() {
         )}
         <div className="mt-3">
           <Upload endpoint="/mexder/bulletin" label="Boletín diario de futuros de MexDer (PDF)" onDone={load} />
+          <div className="mt-2"><Upload endpoint="/mexder/aims" label="AIM unitarias de MexDer/Asigna (Excel «AIMS_Unitarias_<Mes><Año>»)" onDone={load} /></div>
+          <p className="mt-1 text-[11px] text-slate-500">La AIM es una garantía por contrato (distinta para larga y corta), no un costo. El análisis de postura usa la AIM del lado elegido.</p>
           <div className="mt-2"><Upload endpoint="/futures/contracts/import" label="O especificaciones en CSV/Excel" template="futures_contracts_template.csv" onDone={load} /></div>
         </div>
       </Card>

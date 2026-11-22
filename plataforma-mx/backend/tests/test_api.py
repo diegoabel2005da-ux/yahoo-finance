@@ -200,3 +200,10 @@ def test_untraceable_numbers():
     ctx = {"value": 1234567.891, "rate": 0.0725}
     assert untraceable_numbers("El valor es 1,234,567.89 y la tasa 7.25%", ctx) == []
     assert untraceable_numbers("La prima es 98765.4", ctx) == ["98765.4"]
+
+
+def test_audit_serializes_decimals():
+    from decimal import Decimal
+    from app.core.audit import build_audit
+    a = build_audit("x", {"aim": Decimal("475.1845")}, {}, [], {"v": Decimal("1.5")})
+    assert a["result"]["v"] == 1.5 and a["inputs"]["aim"] == 475.1845

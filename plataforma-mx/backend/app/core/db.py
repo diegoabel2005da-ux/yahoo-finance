@@ -175,8 +175,11 @@ class FuturesContract(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     currency: Mapped[str] = mapped_column(String(3))
     settlement: Mapped[str] = mapped_column(String(20))  # fisica / financiera
-    initial_margin: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)  # AIM
+    initial_margin: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)  # AIM (máx. larga/corta)
+    margin_long: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    margin_short: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
     margin_as_of: Mapped[date | None] = mapped_column(Date, nullable=True)
+    margin_source: Mapped[str | None] = mapped_column(String(500), nullable=True)
     source: Mapped[str] = mapped_column(String(500))
     reviewed_on: Mapped[date] = mapped_column(Date)
 
@@ -196,6 +199,10 @@ class OptionContract(Base):
     underlying_series: Mapped[str | None] = mapped_column(String(10), nullable=True)
     strike_published: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
     strike_scale: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)  # None = escala no verificada
+    margin_long: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    margin_short: Mapped[float | None] = mapped_column(Numeric(18, 4), nullable=True)
+    margin_as_of: Mapped[date | None] = mapped_column(Date, nullable=True)
+    margin_source: Mapped[str | None] = mapped_column(String(500), nullable=True)
     last_settlement: Mapped[float | None] = mapped_column(Numeric(24, 8), nullable=True)
     previous_settlement: Mapped[float | None] = mapped_column(Numeric(24, 8), nullable=True)
     open_interest: Mapped[float | None] = mapped_column(Numeric(24, 2), nullable=True)

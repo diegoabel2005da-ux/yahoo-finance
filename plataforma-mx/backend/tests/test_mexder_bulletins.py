@@ -57,3 +57,12 @@ def test_detect_kind():
     assert mb.detect_kind(FUT) == "futuros" and mb.detect_kind(OPT) == "opciones"
     with pytest.raises(ValueError):
         mb.detect_kind("otro documento")
+
+
+def test_single_digit_day_and_tief_series_month():
+    txt = FUT.replace("                         WALMEX V", "                TASA DE FONDEO / BANK FUNDING RATE FUTURES\n"
+                      "       2026/DIC/1           6.330000                  6.330000                     0\n"
+                      "                         WALMEX V")
+    rows = {r["symbol"]: r for r in mb.parse_futures(txt)["rows"]}
+    assert "TIEF NV26" in rows                      # vence 1-dic-2026 → serie de noviembre
+    assert rows["TIEF NV26"]["expiry"] == date(2026, 12, 1) and rows["TIEF NV26"]["settlement"] == 6.33

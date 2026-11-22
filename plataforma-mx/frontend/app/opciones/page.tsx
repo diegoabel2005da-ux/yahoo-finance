@@ -52,13 +52,13 @@ export default function Opciones() {
             </div>
             <div className="max-h-80 overflow-auto rounded border border-slate-200 dark:border-navy-700">
               <table className="tbl">
-                <thead><tr>{["", "Tipo", "Strike", "Strike publicado", "Vencimiento", "Precio de liquidación", "Liq. anterior", "Interés abierto", "Estilo", "Mult."].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                <thead><tr>{["", "Tipo", "Strike", "Strike publicado", "Vencimiento", "Precio de liquidación", "Liq. anterior", "Interés abierto", "AIM corta", "Estilo", "Mult."].map((h) => <th key={h}>{h}</th>)}</tr></thead>
                 <tbody>
                   {shown.slice(0, 600).map((x) => (
                     <tr key={x.id}>
                       <td><button className="btn-ghost px-2 py-0.5 text-xs" onClick={() => pick(x)}>Valorar</button></td>
                       <td>{x.option_type}</td><td className={x.strike_scale === null && x.underlying_ticker !== "IPC" && x.underlying_ticker !== "USD" ? "text-red-600" : ""}>{x.strike}</td><td>{x.strike_published ?? "—"}</td><td>{x.expiry}</td><td>{x.last_settlement ?? "—"}</td>
-                      <td>{x.previous_settlement ?? "—"}</td><td>{x.open_interest ?? "—"}</td><td>{x.style}</td><td>{x.multiplier}</td>
+                      <td>{x.previous_settlement ?? "—"}</td><td>{x.open_interest ?? "—"}</td><td title={x.margin_source ?? ""}>{x.margin_short ?? "—"}</td><td>{x.style}</td><td>{x.multiplier}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -72,6 +72,8 @@ export default function Opciones() {
         )}
         <div className="mt-3">
           <Upload endpoint="/mexder/bulletin" label="Boletín diario de opciones de MexDer (PDF)" onDone={load} />
+          <div className="mt-2"><Upload endpoint="/mexder/aims" label="AIM unitarias de MexDer/Asigna (Excel)" onDone={load} /></div>
+          <p className="mt-1 text-[11px] text-slate-500">AIM corta = garantía por contrato al vender la opción. La posición larga no requiere AIM: se paga la prima.</p>
           <div className="mt-2"><Upload endpoint="/options/contracts/import" label="O series en CSV/Excel" template="option_contracts_template.csv" onDone={load} /></div>
         </div>
       </Card>

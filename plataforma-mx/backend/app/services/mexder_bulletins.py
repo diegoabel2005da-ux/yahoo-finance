@@ -24,8 +24,8 @@ SPANISH_DATE = re.compile(r"(\d{1,2}) DE ([A-ZÁÉÍÓÚ]+) DE (\d{4})")
 LONG_MONTHS = {"ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6, "JULIO": 7, "AGOSTO": 8,
                "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12}
 NUM = r"-?[\d,]+(?:\.\d+)?"
-FUT_ROW = re.compile(rf"^\s*(\d{{4}})/([A-Z]{{3}})/(\d{{2}})\s+({NUM})\s+({NUM})\s+({NUM}|-----)\s*$")
-OPT_ROW = re.compile(rf"^\s*(\d{{4}})/([A-Z]{{3}})/(\d{{2}})\s+([CP])\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM}|-----)\s*$")
+FUT_ROW = re.compile(rf"^\s*(\d{{4}})/([A-Z]{{3}})/(\d{{1,2}})\s+({NUM})\s+({NUM})\s+({NUM}|-----)\s*$")
+OPT_ROW = re.compile(rf"^\s*(\d{{4}})/([A-Z]{{3}})/(\d{{1,2}})\s+([CP])\s+({NUM})\s+({NUM})\s+({NUM})\s+({NUM}|-----)\s*$")
 
 # Alias de los boletines → (ticker, serie) del catálogo.
 EQUITY_ALIASES = {
@@ -142,9 +142,15 @@ def parse_futures(text: str) -> dict:
         if m and current:
             prefix, spec, meta = current
             exp = _expiry(*m.group(1, 2, 3))
-            out.append({"prefix": prefix, "spec": spec, "meta": meta, "expiry": exp,
-                        "symbol": f"{prefix} {exp.day:02d}{MONTH_CODE[exp.month]}{exp.year % 100:02d}"
-                        if prefix in ("DA", "MD") else f"{prefix} {MONTH_CODE[exp.month]}{exp.year % 100:02d}",
+            if prefix in ("DA", "MD"):
+                sym = f"{prefix} {exp.day:02d}{MONTH_CODE[exp.month]}{exp.year % 100:02d}"
+            elif prefix == "TIEF":
+                # Vence el primer día hábil del mes SIGUIENTE al mes de la serie (CGC del contrato TIEF).
+                sy, sm = (exp.year, exp.month - 1) if exp.month > 1 else (exp.year - 1, 12)
+                sym = f"TIEF {MONTH_CODE[sm]}{sy % 100:02d}"
+            else:
+                sym = f"{prefix} {MONTH_CODE[exp.month]}{exp.year % 100:02d}"
+            out.append({"prefix": prefix, "spec": spec, "meta": meta, "expiry": exp, "symbol": sym,
                         "previous_settlement": _num(m.group(4)), "settlement": _num(m.group(5)),
                         "open_interest": _num(m.group(6))})
     return {"date": bdate, "rows": out, "unrecognized_sections": unknown}
@@ -301,7 +307,7 @@ def import_bulletin(db, content: bytes, filename: str) -> dict:
             rec.underlying_series = meta.get("series")
             sc = scales.get(r["underlying"], {"scale": 1.0, "evidence": "índice/divisa: strike en unidades del subyacente"})
             rec.strike_published, rec.strike_scale = r["strike"], sc["scale"]
-            rec.option_type, rec.strike, rec.expiry = r["option_type"], r["strike"] * (sc["scale"] or 1.0), r["expiry"]
+            rec.option_type, rec.strike, rec.expiry = r["option_type"], round(r["strike"] * (sc["scale"] or 1.0), 6), r["expiry"]
             rec.multiplier, rec.style, rec.settlement, rec.currency = r["multiplier"], r["style"], r["settlement_type"], "MXN"
             notes = [n for n in (meta.get("alias_note"), "Opción sobre el futuro del IPC: ampara un futuro de $10 por punto"
                                  if r["underlying"] == "IPC" else None) if n]

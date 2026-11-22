@@ -458,3 +458,10 @@ async def mexder_bulletin(file: UploadFile = File(...), db: Session = Depends(ge
     from ..services import mexder_bulletins
     content = await _read(file)
     return _wrap(lambda: mexder_bulletins.import_bulletin(db, content, file.filename))
+
+
+@router.post("/mexder/aims")
+async def mexder_aims(file: UploadFile = File(...), db: Session = Depends(get_session)):
+    from ..services import mexder_margins
+    content = await _read(file)
+    return _wrap(lambda: mexder_margins.import_aims(db, content, file.filename))

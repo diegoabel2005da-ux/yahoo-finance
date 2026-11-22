@@ -318,8 +318,13 @@ def futures_analyze(req: FuturesReq, db: Session = Depends(get_session)):
            "exercise_style": "no aplica (los futuros no son americanos ni europeos)"}
     aim = req.initial_margin_per_contract
     origin = req.margin_origin
-    if aim is None and contract is not None and contract.initial_margin is not None:
-        aim, origin = float(contract.initial_margin), f"AIM importada ({contract.source}, {contract.margin_as_of})"
+    if aim is None and contract is not None:
+        side_aim = contract.margin_long if req.side == "long" else contract.margin_short
+        if side_aim is None:
+            side_aim = contract.initial_margin
+        if side_aim is not None:
+            aim = float(side_aim)
+            origin = f"AIM {'larga' if req.side == 'long' else 'corta'} importada · {contract.margin_source or contract.source}"
     if aim is not None:
         res["margin"] = fu.MarginSimulation(aim, req.maintenance_ratio, req.commission_per_contract_side, origin).run(
             path, req.contracts, req.multiplier, req.side)

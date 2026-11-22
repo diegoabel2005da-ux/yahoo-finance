@@ -6,6 +6,7 @@ import json
 import math
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 import numpy as np
@@ -24,6 +25,8 @@ def to_jsonable(obj: Any) -> Any:
         return [to_jsonable(v) for v in obj]
     if isinstance(obj, np.ndarray):
         return [to_jsonable(v) for v in obj.tolist()]
+    if isinstance(obj, Decimal):
+        obj = float(obj)
     if isinstance(obj, (np.floating,)):
         obj = float(obj)
     if isinstance(obj, (np.integer,)):

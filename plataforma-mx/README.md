@@ -25,7 +25,7 @@ backend/   Python · FastAPI · SQLAlchemy (PostgreSQL vía DATABASE_URL; SQLite
                    IA explicativa, reportes Excel/PDF
   app/api/         rutas REST (cada cálculo devuelve un audit_id reproducible)
   data/templates/  plantillas CSV de importación (sólo encabezados, sin datos)
-  tests/           74 pruebas: valores de referencia independientes, no arbitraje, integración de la API
+  tests/           76 pruebas: valores de referencia independientes, no arbitraje, integración de la API
 frontend/  Next.js 15 · React 19 · TypeScript · Tailwind · Plotly (16 módulos del menú)
 docs/      metodología financiera y técnica
 ```
@@ -86,7 +86,14 @@ cd backend && python -m pytest -q
 - **Alias del boletín:** ALFA A → SIGMAF A (confirmado por el usuario), AMERICA MOVIL B → AMX B, KOF L → KOF UBL, WALMEX V → WALMEX *. Quedan anotados en cada contrato.
 - **Escala de strikes:** para varios subyacentes el boletín publica el strike dividido entre 100 (p. ej. ASUR «5.2» = $520). La escala se infiere en cada importación con la paridad put-call del vencimiento más cercano, contra el cierre del mismo día. Se guardan el strike publicado, el factor y la evidencia. Si no se puede decidir, la serie queda marcada como «escala no verificada». Si la paridad se desvía más de un 3 % tras la escala, se advierte que el precio del subyacente disponible no coincide con el de referencia de MexDer: el 20-nov ocurrió con META, NVDA y TSLA, cuyo precio del SIC en Yahoo difiere.
 - **Precio de liquidación de opciones:** es el precio oficial que publica MexDer para cada serie. Si la serie no operó, MexDer lo determina con su metodología, así que no equivale a una prima negociada.
-- **Pendiente:** las AIMs, que publica Asigna y no vienen en estos boletines.
+- **Vencimientos de un dígito y TIEF:** se leen series con vencimiento en días de uno o dos dígitos. El futuro de TIIE de Fondeo se identifica por el mes de la serie: vence el primer día hábil del mes siguiente, así que el vencimiento del 1-dic-2026 es la serie NV26. El boletín del 20-nov-2026 dejó 512 series de futuros.
+
+### AIM unitarias (MexDer/Asigna)
+
+`POST /api/mexder/aims` importa el Excel «AIMS_Unitarias_<Mes><Año>». Las hojas son Futuros (AIM distinta para larga y corta), Opciones (AIM corta por strike; la larga es 0) y Swaps (sólo se reporta).
+- Las AIM se asignan únicamente a contratos ya importados de un boletín; las series que no existen se reportan y no se crean. Con el archivo de octubre de 2026 se asignaron 444 de 512 series de futuros y 6,008 de 6,360 de opciones. Las demás son series ya vencidas, strikes que MexDer dejó de listar en noviembre o la clase «DEUA», que no aparece en el boletín.
+- Los strikes del archivo vienen en su escala real y coinciden con la escala ×100 que se infiere del boletín por paridad put-call, lo que es una verificación independiente.
+- El periodo se toma del nombre del archivo (octubre 2026 se registra al 31-oct-2026) y la plataforma no lo presenta como AIM vigente del día. El análisis de futuros usa la AIM del lado elegido (larga o corta).
 
 ### Yahoo Finance como fuente de referencia
 
