@@ -36,7 +36,14 @@ DEFAULT_BANXICO_SERIES = {
     "CETES_91": "SF43939",
     "CETES_182": "SF43942",
     "CETES_364": "SF43945",
+    "FIX": "SF43718",            # Tipo de cambio FIX (pesos por dólar), fecha de determinación
+    "BONO_M_3A": "SF43883",      # Bonos a tasa fija 3 años, tasa de rendimiento de la subasta
+    "BONO_M_5A": "SF43886",
+    "BONO_M_10A": "SF44071",
+    "BONO_M_20A": "SF45384",
+    "BONO_M_30A": "SF60696",
 }
+BONO_M_TENORS = {"BONO_M_3A": 3, "BONO_M_5A": 5, "BONO_M_10A": 10, "BONO_M_20A": 20, "BONO_M_30A": 30}
 CETES_TENORS = {"CETES_28": 28, "CETES_91": 91, "CETES_182": 182, "CETES_364": 364}
 
 
@@ -67,15 +74,18 @@ def check_source(name: str, timeout: float = 8.0) -> dict:
 def fetch_banxico(rate_code: str, start: date, end: date, timeout: float = 15.0) -> dict:
     """Descarga observaciones de la API SIE de Banxico. Devuelve renglones con procedencia
     completa listos para `import_rates`, o un estado 'no_disponible' con motivo."""
-    token = os.environ.get("BANXICO_TOKEN")
+    # Si no hay variable, se envía un marcador: en entornos con la credencial guardada, el proxy de red
+    # sustituye el encabezado Bmx-Token por el token real. Sin credencial, Banxico responde 401 y se reporta.
+    token = os.environ.get("BANXICO_TOKEN") or "proxy-injected"
     series = banxico_series_map().get(rate_code)
     if not series:
         return {"status": "no_disponible", "reason": f"sin identificador SIE configurado para {rate_code}"}
-    if not token:
-        return {"status": "no_disponible", "reason": "falta BANXICO_TOKEN (token gratuito del SIE)"}
     url = f"{SOURCES['Banxico']['url']}series/{series}/datos/{start.isoformat()}/{end.isoformat()}"
     try:
         r = httpx.get(url, headers={"Bmx-Token": token, "Accept": "application/json"}, timeout=timeout)
+        if r.status_code in (401, 403):
+            return {"status": "no_disponible", "reason": f"Banxico rechazó el token (HTTP {r.status_code}): configure "
+                                                         "BANXICO_TOKEN o guarde la credencial del entorno"}
         r.raise_for_status()
         data = r.json()["bmx"]["series"][0]
     except Exception as e:
@@ -88,7 +98,9 @@ def fetch_banxico(rate_code: str, start: date, end: date, timeout: float = 15.0)
         dd, mm, yy = d["fecha"].split("/")
         rows.append({"rate_code": rate_code, "rate_name": data.get("titulo", rate_code), "tenor": rate_code,
                      "market_date": f"{yy}-{mm}-{dd}", "value_pct": d["dato"].replace(",", ""),
-                     "convention": "Tasa anual, base ACT/360 (verificar metodología vigente)",
+                     "convention": ("Pesos por dólar (FIX)" if rate_code == "FIX" else
+                                    "Rendimiento anual de subasta, cupón semestral (182 días)" if rate_code.startswith("BONO_M") else
+                                    "Tasa anual, base ACT/360 (verificar metodología vigente)"),
                      "source": f"Banxico SIE {series}", "retrieved_at": retrieved,
                      "origin": "observado_fuente_oficial"})
     return {"status": "ok", "series": series, "rows": rows}

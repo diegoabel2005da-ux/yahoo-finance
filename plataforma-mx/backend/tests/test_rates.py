@@ -197,3 +197,29 @@ def test_black_requires_positive_rates():
     with pytest.raises(ValueError):
         cf.black76("cap", -0.001, 0.01, 1, 0.2)
     assert cf.black76("cap", -0.001, 0.01, 1, 0.2, shift=0.02) > 0
+
+
+def test_bootstrap_government_curve_reprices_par_bonds():
+    from app.engines.rates.curve import bootstrap_government_curve
+    cetes = [(28, 0.0619), (91, 0.0649), (182, 0.0667), (364, 0.0695)]
+    bonds = [(3, 0.080), (5, 0.0878), (10, 0.0928)]
+    nodes = bootstrap_government_curve(cetes, bonds)
+    df = {n["days"]: n["value"] for n in nodes}
+    assert df[28] == pytest.approx(1 / (1 + 0.0619 * 28 / 360))
+    # un bono par a 5 años (10 cupones) debe valer 1 con los DF obtenidos
+    c = 0.0878 * 182 / 360
+    pv = c * sum(df[182 * k] for k in range(1, 11)) + df[1820]
+    assert pv == pytest.approx(1.0, abs=1e-12)
+    ds = [df[d] for d in sorted(df)]
+    assert all(b < a for a, b in zip(ds, ds[1:]))  # DF decrecientes
+    with pytest.raises(ValueError):
+        bootstrap_government_curve([(28, 0.06)], bonds)
+
+
+def test_forward_diagnostics_flags_unstable_long_end():
+    from app.engines.rates.curve import bootstrap_government_curve, forward_diagnostics
+    cetes = [(28, 0.0619), (91, 0.0649), (182, 0.0667), (364, 0.0695)]
+    ok = forward_diagnostics(bootstrap_government_curve(cetes, [(3, .08), (5, .0878), (10, .0928), (20, .0979)]))
+    assert not ok["flagged"]
+    bad = forward_diagnostics(bootstrap_government_curve(cetes, [(3, .08), (5, .0878), (10, .0928), (20, .0979), (30, .1015)]))
+    assert bad["flagged"] and bad["max_forward"] > 0.15

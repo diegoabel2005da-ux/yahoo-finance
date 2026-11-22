@@ -533,3 +533,72 @@ def yahoo_fundamentals_all(db: Session = Depends(get_session)):
             row["eventos"] = f"no disponible: {act['reason']}"
         out.append(row)
     return out
+
+
+class GovCurveReq(BaseModel):
+    curve_date: date | None = None
+    include_30y: bool = False
+    cetes_max_age_days: int = 10
+    bonds_max_age_days: int = 60
+    interpolation: str = "log_linear_df"
+
+
+@router.post("/curves/banxico-gov")
+def curve_gov(req: GovCurveReq, db: Session = Depends(get_session)):
+    """Curva cero gubernamental hasta 30 años: CETES 28-364 días + Bonos M 3-30 años (subastas de Banxico),
+    con bootstrapping de tasas par. Rechaza la construcción si alguna subasta excede la antigüedad máxima."""
+    import io
+    from datetime import timedelta
+
+    import pandas as pd
+
+    from ..engines.rates.curve import bootstrap_government_curve, forward_diagnostics
+
+    cd = req.curve_date or date.today()
+    used, cetes, bonds = [], [], []
+    for code, days in connectors.CETES_TENORS.items():
+        res = connectors.fetch_banxico(code, cd - timedelta(days=40), cd)
+        if res["status"] != "ok" or not res["rows"]:
+            raise HTTPException(422, f"{code}: {res.get('reason', 'sin observaciones recientes')}")
+        last = max(res["rows"], key=lambda r: r["market_date"])
+        od = date.fromisoformat(last["market_date"])
+        if (cd - od).days > req.cetes_max_age_days:
+            raise HTTPException(422, f"{code}: última subasta {od} excede {req.cetes_max_age_days} días")
+        cetes.append((days, float(last["value_pct"]) / 100))
+        used.append({"tenor": code, "series": res["series"], "auction_date": od.isoformat(), "yield_pct": last["value_pct"]})
+    for code, years in connectors.BONO_M_TENORS.items():
+        if years == 30 and not req.include_30y:
+            continue
+        res = connectors.fetch_banxico(code, cd - timedelta(days=req.bonds_max_age_days + 10), cd)
+        if res["status"] != "ok" or not res["rows"]:
+            raise HTTPException(422, f"{code}: {res.get('reason', 'sin subasta en la ventana permitida')}")
+        last = max(res["rows"], key=lambda r: r["market_date"])
+        od = date.fromisoformat(last["market_date"])
+        if (cd - od).days > req.bonds_max_age_days:
+            raise HTTPException(422, f"{code}: última subasta {od} excede {req.bonds_max_age_days} días")
+        bonds.append((years, float(last["value_pct"]) / 100))
+        used.append({"tenor": code, "series": res["series"], "auction_date": od.isoformat(), "yield_pct": last["value_pct"]})
+    try:
+        nodes = bootstrap_government_curve(cetes, bonds)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    buf = io.BytesIO()
+    pd.DataFrame(nodes).to_csv(buf, index=False)
+    source = ("Banxico SIE · subastas de CETES y Bonos M · bootstrapping de tasas par (plataforma) · "
+              + "; ".join(f"{u['tenor']} {u['yield_pct']}% ({u['auction_date']})" for u in used))
+    res = _wrap(lambda: importers.import_curve(db, buf.getvalue(), "gov.csv", f"Gubernamental Banxico {cd}", cd,
+                                               "discount_factor", "continua", "ACT/365F", req.interpolation, source,
+                                               "observado_fuente_oficial"))
+    diag = forward_diagnostics(nodes)
+    warnings = []
+    if diag["flagged"]:
+        f0 = diag["flagged"][0]
+        warnings.append(f"Forwards inestables desde {f0['from_days'] // 365} años (máx. {diag['max_forward']:.2%}): el tramo "
+                        "largo del bootstrapping con tasas par no es confiable; úselo con cautela.")
+    return {**res, "auctions": used, "warnings": warnings,
+            "forward_check": {"max_forward": diag["max_forward"], "flagged_segments": len(diag["flagged"])},
+            "notes": ["Insumos oficiales (subastas primarias de Banxico); la curva cero es un cálculo de la plataforma.",
+                      "Por omisión la curva llega a 20 años; el nodo de 30 años es opcional (include_30y) porque, con tasas "
+                      "par cercanas al 10 %, amplifica las forwards del tramo largo.",
+                      "Rendimientos de Bonos M tratados como tasas par con cupón semestral de 182 días; plazo nominal de cada subasta.",
+                      "Las fechas de subasta difieren entre plazos; se reporta cada una."]}

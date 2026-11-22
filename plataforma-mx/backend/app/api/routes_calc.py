@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..core.audit import ENGINE_VERSION, to_jsonable
 from ..core.db import (AuditRecord, CorporateAction, Exposure, FinancialStatement, FuturesContract, Instrument,
-                       Study, get_session)
+                       RateObservation, Study, get_session)
 from ..core.provenance import DataOrigin, PriceType
 from ..engines import fundamental as fa
 from ..engines import futures as fu
@@ -227,6 +227,7 @@ def ratios(req: RatiosReq, db: Session = Depends(get_session)):
             if k in items and k in prev_items:
                 items[avg] = (items[k] + prev_items[k]) / 2
     price, shares, dps, notes = req.price, req.shares, req.dps_ttm, []
+    last_px_date = date.today()
     stmt_ccy = next((s.currency for s in stmts if s.period_end == pe), None)
     inst = db.scalar(select(Instrument).where(Instrument.ticker == req.ticker.upper()))
     if req.price is not None:
@@ -260,9 +261,23 @@ def ratios(req: RatiosReq, db: Session = Depends(get_session)):
         srcs.append({"dato": "acciones en circulación (balance)", "fuente": "estado de posición financiera del periodo",
                      "fecha": str(pe), "origen": "observado", "estado": ""})
     if price is not None and inst is not None and stmt_ccy and stmt_ccy != inst.currency:
-        notes.append(f"Estados financieros en {stmt_ccy} y precio en {inst.currency}: no se calculan múltiplos de "
-                     "mercado ni rendimiento por dividendo para no mezclar monedas.")
-        price, dps = None, None
+        fx = None
+        if stmt_ccy == "USD" and inst.currency == "MXN" and req.price is None:
+            fx = db.scalar(select(RateObservation).where(RateObservation.rate_code == "FIX",
+                                                         RateObservation.market_date <= last_px_date)
+                           .order_by(RateObservation.market_date.desc()))
+        if fx is not None:
+            rate = float(fx.value_raw)
+            price = price / rate
+            dps = dps / rate if dps is not None else None
+            notes.append(f"Precio y dividendos convertidos a USD con el FIX de {fx.market_date} ({rate} MXN/USD) para "
+                         "calcular múltiplos con la moneda de los estados financieros.")
+            srcs.append({"dato": "tipo de cambio FIX", "fuente": fx.source, "fecha": str(fx.market_date),
+                         "origen": fx.origin, "estado": fx.validation})
+        else:
+            notes.append(f"Estados financieros en {stmt_ccy} y precio en {inst.currency}: no se calculan múltiplos de "
+                         "mercado ni rendimiento por dividendo para no mezclar monedas (cargue el FIX de Banxico para convertir).")
+            price, dps = None, None
     res = fa.compute_ratios(items, price, shares, dps, req.tax_rate)
     res["period_end"] = pe
     res["items"] = items
@@ -894,3 +909,31 @@ def audit_list(limit: int = 50, db: Session = Depends(get_session)):
     return [to_jsonable({"id": a.id, "calculation": a.calculation, "created_at": a.created_at,
                          "digest": a.result_digest})
             for a in db.scalars(select(AuditRecord).order_by(AuditRecord.id.desc()).limit(limit))]
+
+
+@router.get("/rates/{code}/volatility")
+def rate_volatility(code: str, window: int = 252, db: Session = Depends(get_session)):
+    """Volatilidad histórica de una tasa (estimación estadística, NO volatilidad implícita de mercado).
+    Normal: desv. est. de cambios diarios (decimal) × √252.  Lognormal: desv. est. de ln(r_t/r_{t−1}) × √252.
+    Se excluyen días sin cambio de fijación sólo si la serie es constante (p. ej. tasa objetivo)."""
+    import math
+
+    import numpy as np
+
+    rows = list(db.scalars(select(RateObservation).where(RateObservation.rate_code == code)
+                           .order_by(RateObservation.market_date)))
+    if len(rows) < 30:
+        raise HTTPException(422, f"se requieren al menos 30 observaciones de {code} (hay {len(rows)})")
+    rows = rows[-(window + 1):]
+    r = np.array([float(x.value_raw) / 100 for x in rows])
+    d = np.diff(r)
+    lg = np.diff(np.log(r))
+    res = {"rate_code": code, "observations": len(d), "start": rows[0].market_date, "end": rows[-1].market_date,
+           "normal_vol": float(d.std(ddof=1) * math.sqrt(252)), "lognormal_vol": float(lg.std(ddof=1) * math.sqrt(252)),
+           "last_value": float(r[-1]), "source": rows[-1].source,
+           "origin": "estimacion_estadistica_historica",
+           "note": "Volatilidad histórica de la tasa de referencia; no es volatilidad implícita de caps/floors. "
+                   "Úsela como supuesto identificado."}
+    return respond(db, "rate_volatility", {"code": code, "window": window}, {},
+                   ["σ_n = sd(Δr)·√252", "σ_ln = sd(Δln r)·√252"], res,
+                   [{"dato": code, "fuente": rows[-1].source, "fecha": str(rows[-1].market_date), "origen": "observado", "estado": ""}])

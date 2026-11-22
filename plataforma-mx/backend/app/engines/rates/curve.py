@@ -131,3 +131,75 @@ class ZeroCurve:
     def table(self) -> list[dict]:
         return [{"t": float(t), "days": int(round(t * 365)), "zero_cont": float(z), "df": math.exp(-z * t)}
                 for t, z in zip(self.times, self.zero_rates)]
+
+
+def bootstrap_government_curve(cetes: list[tuple[int, float]], bonds: list[tuple[float, float]],
+                               coupon_days: int = 182) -> list[dict]:
+    """Curva cero gubernamental: CETES (cupón cero) + Bonos M (rendimientos tratados como tasas PAR).
+
+    - CETES: DF(d) = 1 / (1 + y·d/360), con y = rendimiento simple publicado (decimal).
+    - Bonos M: cupón semestral c_k = y_par(t_k)·182/360 pagado cada 182 días; la tasa par en cada fecha
+      de cupón se interpola linealmente entre nodos (la tasa par a 364 días se deriva de los CETES).
+      Condición par: 1 = c·Σ_{j≤k} DF_j + DF_k  ⇒  DF_k = (1 − c·Σ_{j<k} DF_j) / (1 + c).
+    Supuestos documentados: plazo nominal de cada subasta (3, 5, 10, 20, 30 años = 182·2·años días) y
+    rendimiento de subasta ≈ tasa par. Devuelve nodos [{"days", "value"(DF)}].
+    """
+    if len(cetes) < 2:
+        raise ValueError("se requieren al menos 2 nodos de CETES")
+    cetes = sorted(cetes)
+    dfs = {d: 1.0 / (1.0 + y * d / 360.0) for d, y in cetes}
+    nodes = [{"days": d, "value": v} for d, v in dfs.items()]
+    if not bonds:
+        return nodes
+    # DF en fechas de cupón dentro del primer año, interpolando log-linealmente los CETES
+    cdays, cdfs = zip(*sorted(dfs.items()))
+
+    def df_cetes(d):
+        if d <= cdays[0]:
+            return dfs[cdays[0]] ** (d / cdays[0])
+        for i in range(1, len(cdays)):
+            if d <= cdays[i]:
+                w = (d - cdays[i - 1]) / (cdays[i] - cdays[i - 1])
+                return math.exp((1 - w) * math.log(cdfs[i - 1]) + w * math.log(cdfs[i]))
+        raise ValueError("fecha de cupón fuera de los CETES")
+
+    a = coupon_days / 360.0
+    df_cpn = [df_cetes(coupon_days * k) for k in (1, 2) if coupon_days * k <= cdays[-1]]
+    if len(df_cpn) < 2:
+        raise ValueError("los CETES deben cubrir al menos 364 días para enlazar con los Bonos M")
+    par_1y = (1 - df_cpn[1]) / (a * (df_cpn[0] + df_cpn[1]))
+    par_pts = [(2 * coupon_days, par_1y)] + sorted((round(y * 2) * coupon_days, r) for y, r in bonds)
+    last_k = par_pts[-1][0] // coupon_days
+    for k in range(3, last_k + 1):
+        d = k * coupon_days
+        for (d0, r0), (d1, r1) in zip(par_pts, par_pts[1:]):
+            if d0 <= d <= d1:
+                par = r0 + (r1 - r0) * (d - d0) / (d1 - d0)
+                break
+        c = par * a
+        df_k = (1 - c * sum(df_cpn)) / (1 + c)
+        if not (0 < df_k < df_cpn[-1]):
+            raise ValueError(f"bootstrapping inconsistente en {d} días (DF={df_k:.6f}); revise los rendimientos")
+        df_cpn.append(df_k)
+        nodes.append({"days": d, "value": df_k})
+    return sorted(nodes, key=lambda n: n["days"])
+
+
+def forward_diagnostics(nodes: list[dict], step_days: int = 364, threshold: float = 0.03) -> dict:
+    """Forwards continuas a ~1 año entre nodos de la curva (DF). Marca tramos cuya forward excede en más
+    de `threshold` la tasa cero máxima de la curva hasta ese punto: señal de inestabilidad del bootstrapping."""
+    df = {n["days"]: n["value"] for n in nodes}
+    days = sorted(df)
+    out, flagged = [], []
+    max_zero = 0.0
+    for d0 in days:
+        d1 = next((d for d in days if d >= d0 + step_days), None)
+        if d1 is None:
+            break
+        fwd = math.log(df[d0] / df[d1]) / ((d1 - d0) / 365)
+        max_zero = max(max_zero, -math.log(df[d0]) / (d0 / 365))
+        out.append({"from_days": d0, "to_days": d1, "forward_cont": fwd})
+        if fwd > max_zero + threshold:
+            flagged.append({"from_days": d0, "to_days": d1, "forward_cont": fwd})
+    return {"forwards": out, "flagged": flagged,
+            "max_forward": max((f["forward_cont"] for f in out), default=None)}

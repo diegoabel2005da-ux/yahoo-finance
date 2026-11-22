@@ -25,7 +25,7 @@ backend/   Python · FastAPI · SQLAlchemy (PostgreSQL vía DATABASE_URL; SQLite
                    IA explicativa, reportes Excel/PDF
   app/api/         rutas REST (cada cálculo devuelve un audit_id reproducible)
   data/templates/  plantillas CSV de importación (sólo encabezados, sin datos)
-  tests/           77 pruebas: valores de referencia independientes, no arbitraje, integración de la API
+  tests/           79 pruebas: valores de referencia independientes, no arbitraje, integración de la API
 frontend/  Next.js 15 · React 19 · TypeScript · Tailwind · Plotly (16 módulos del menú)
 docs/      metodología financiera y técnica
 ```
@@ -110,8 +110,23 @@ Por decisión del usuario (uso personal y de investigación, términos de Yahoo 
 
 ### Banxico (SIE)
 
-Con `BANXICO_TOKEN` configurado, `POST /api/rates/banxico` descarga series oficiales. Los identificadores se verificaron contra el título oficial que devuelve la API de Banxico (21-nov-2026): TIIE 28 `SF43783`, TIIE 91 `SF43878`, TIIE 182 `SF111916`, TIIE de Fondeo `SF331451`, tasa objetivo `SF61745`, y CETES 28/91/182/364 `SF43936`/`SF43939`/`SF43942`/`SF43945`.
-`POST /api/curves/banxico-cetes` construye una curva cero con los rendimientos de la última subasta semanal de CETES (simple ACT/360, nodos de 28 a 364 días). Si alguna subasta es demasiado antigua, la curva no se construye. Requiere acceso de red a `www.banxico.org.mx`. El token no se guarda en el repositorio.
+El token se guarda como **credencial del entorno**: el proxy de red lo inyecta en el encabezado `Bmx-Token` hacia `www.banxico.org.mx`. No vive en el código ni en variables. Fuera de ese entorno se puede definir `BANXICO_TOKEN`; si no hay ninguno, Banxico responde 401 y la plataforma lo reporta.
+
+Series verificadas contra el título oficial de la API (21–22-nov-2026):
+
+| Código | Serie SIE | Descripción |
+|---|---|---|
+| TIIE_28 / TIIE_91 / TIIE_182 | SF43783 / SF43878 / SF111916 | TIIE a 28, 91 y 182 días |
+| TIIE_FONDEO | SF331451 | TIIE de Fondeo a un día hábil |
+| TASA_OBJETIVO | SF61745 | Tasa objetivo |
+| CETES_28 / 91 / 182 / 364 | SF43936 / SF43939 / SF43942 / SF43945 | Rendimiento de la subasta semanal |
+| BONO_M_3A / 5A / 10A / 20A / 30A | SF43883 / SF43886 / SF44071 / SF45384 / SF60696 | Rendimiento de la subasta de Bonos a tasa fija |
+| FIX | SF43718 | Tipo de cambio FIX, fecha de determinación |
+
+- `POST /api/curves/banxico-cetes`: curva cero con CETES (hasta 364 días).
+- `POST /api/curves/banxico-gov`: curva gubernamental con CETES y Bonos M. Los rendimientos de los Bonos M se tratan como tasas par con cupón semestral de 182 días y se obtienen los factores de descuento por bootstrapping, usando el plazo nominal de cada subasta. Por omisión la curva llega a 20 años. El nodo de 30 años es opcional porque, con tasas par cercanas al 10 %, amplifica las forwards del tramo largo (21.6 % a 29–30 años con los datos del 20-nov-2026). Cada construcción reporta un diagnóstico de forwards y rechaza subastas más antiguas que el límite (10 días para CETES, 60 para Bonos).
+- `GET /api/rates/{código}/volatility`: volatilidad histórica normal y lognormal de la tasa. Es una estimación estadística, no una volatilidad implícita; en «Caps y floors» se puede usar como supuesto identificado.
+- **FIX en ratios:** para emisoras que reportan en dólares y cotizan en pesos, el precio y los dividendos se convierten con el FIX del día del precio para calcular los múltiplos.
 
 ### Estado de las fuentes en este entorno de desarrollo
 

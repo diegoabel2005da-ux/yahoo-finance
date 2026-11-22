@@ -13,6 +13,13 @@ export default function CapsFloors() {
   const [f, setF] = useState<any>({ curve_id: "", kind: "cap", notional: 100_000_000, strike: NaN, start: "", end: "", frequency: "28D", day_count: "ACT/360", rate_style: "term_fixed_in_advance", model: "black76", vol: NaN, vol_origin: "supuesto_del_usuario", shift: 0, reference_rate: "TIIE_28", fixing_lag_bd: 1, observed_premium: NaN, observed_premium_origin: "", compare_normal_vol: NaN, compare_lognormal_vol: NaN, known_fixings: "", accrued: "" });
   const set = (k: string) => (v: any) => setF({ ...f, [k]: v });
   const { data, error, busy, run } = useRun<Calc>();
+  const hv = useRun<any>();
+  const useHistVol = () => hv.run(async () => {
+    const code = f.rate_style === "compounded_in_arrears" ? "TIIE_FONDEO" : f.reference_rate || "TIIE_28";
+    const r = (await api.get(`/rates/${code}/volatility`, { window: 252 })).result;
+    setF({ ...f, vol: +(f.model === "black76" ? r.lognormal_vol : r.normal_vol).toFixed(6), vol_origin: "volatilidad_historica_tasas" });
+    return r;
+  });
   const fin = (v: number) => (Number.isFinite(v) ? v : null);
   const parseMap = (s: string) => Object.fromEntries(s.split(";").map((p) => p.split("=")).filter((p) => p.length === 2).map(([k, v]) => [String(Number(k) - 1), Number(v)]));
   const go = () =>
@@ -55,9 +62,12 @@ export default function CapsFloors() {
           <Num label="Comparar: σ normal" value={f.compare_normal_vol} onChange={set("compare_normal_vol")} />
           <Num label="Comparar: σ lognormal" value={f.compare_lognormal_vol} onChange={set("compare_lognormal_vol")} />
         </div>
-        <button className="btn mt-3" onClick={go} disabled={busy || !f.curve_id}>
-          Valorar
-        </button>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button className="btn" onClick={go} disabled={busy || !f.curve_id}>Valorar</button>
+          <button className="btn-ghost" onClick={useHistVol} disabled={hv.busy}>Usar volatilidad histórica de la tasa (1 año)</button>
+          {hv.data && <span className="text-[11px] text-slate-500">{hv.data.rate_code} {String(hv.data.start).slice(0, 10)}–{String(hv.data.end).slice(0, 10)}: normal {(hv.data.normal_vol * 1e4).toFixed(1)} pb · lognormal {(hv.data.lognormal_vol * 100).toFixed(2)} %. Estimación histórica, no volatilidad implícita.</span>}
+        </div>
+        <ErrorBox error={hv.error} />
         <ErrorBox error={error} />
       </Card>
       {v && (

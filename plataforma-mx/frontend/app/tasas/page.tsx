@@ -16,6 +16,8 @@ export default function Tasas() {
   const fetchBx = useRun<any>();
   const cetes = useRun<any>();
   const [cetesDate, setCetesDate] = useState("");
+  const gov = useRun<any>();
+  const [with30, setWith30] = useState(false);
   const [cf, setCf] = useState({ name: "", curve_date: "", quote_kind: "zero_rate_pct", compounding: "continua", day_count: "ACT/360", interpolation: "log_linear_df", source: "", origin: "observado_proveedor_secundario" });
   const loadRates = () => api.get("/rates").then(setRates).catch(() => {});
   const loadCurves = () => api.get("/curves").then(setCurves).catch(() => {});
@@ -46,7 +48,7 @@ export default function Tasas() {
           )}
           <h3 className="mt-4 text-xs font-semibold uppercase text-slate-500">Banxico SIE</h3>
           <div className="grid grid-cols-3 gap-2">
-            <Select label="Serie" value={bx.rate_code} onChange={(v) => setBx({ ...bx, rate_code: v })} options={["TIIE_28", "TIIE_91", "TIIE_182", "TIIE_FONDEO", "TASA_OBJETIVO", "CETES_28", "CETES_91", "CETES_182", "CETES_364"].map((x) => [x, x])} />
+            <Select label="Serie" value={bx.rate_code} onChange={(v) => setBx({ ...bx, rate_code: v })} options={["TIIE_28", "TIIE_91", "TIIE_182", "TIIE_FONDEO", "TASA_OBJETIVO", "CETES_28", "CETES_91", "CETES_182", "CETES_364", "BONO_M_3A", "BONO_M_5A", "BONO_M_10A", "BONO_M_20A", "BONO_M_30A", "FIX"].map((x) => [x, x])} />
             <Text label="Desde" type="date" value={bx.start} onChange={(v) => setBx({ ...bx, start: v })} />
             <Text label="Hasta" type="date" value={bx.end} onChange={(v) => setBx({ ...bx, end: v })} />
           </div>
@@ -104,6 +106,20 @@ export default function Tasas() {
             </button>
           </div>
           <ErrorBox error={cetes.error} />
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <button className="btn" disabled={gov.busy} onClick={() => gov.run(async () => { const r = await api.post("/curves/banxico-gov", { curve_date: cetesDate || null, include_30y: with30 }); loadCurves(); setCurveId(String(r.curve_id)); return r; })}>
+              {gov.busy ? "Construyendo…" : "Construir curva gubernamental (CETES + Bonos M)"}
+            </button>
+            <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={with30} onChange={(e) => setWith30(e.target.checked)} /> Incluir nodo de 30 años (tramo largo menos estable)</label>
+          </div>
+          <ErrorBox error={gov.error} />
+          {gov.data && (
+            <div className="mt-1 text-xs">
+              <p>Curva #{gov.data.curve_id} ({gov.data.nodes.length} nodos): {gov.data.auctions.map((a: any) => `${a.tenor} ${a.yield_pct}% (${a.auction_date})`).join(" · ")}. Forward máxima {(gov.data.forward_check.max_forward * 100).toFixed(2)} %.</p>
+              {gov.data.warnings.map((w: string) => <Notice key={w} tone="warn">{w}</Notice>)}
+              <p className="text-slate-500">{gov.data.notes.join(" ")}</p>
+            </div>
+          )}
           {cetes.data && <p className="mt-1 text-xs">Curva #{cetes.data.curve_id}: {cetes.data.auctions.map((a: any) => `${a.tenor} ${a.yield_pct}% (${a.auction_date})`).join(" · ")}. {cetes.data.notes.join(" ")}</p>}
         </div>
         <div className="mt-2">
